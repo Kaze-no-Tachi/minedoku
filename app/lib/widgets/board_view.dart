@@ -1,58 +1,62 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:minedoku_engine/minedoku_engine.dart';
 
-import '../theme.dart';
-import 'mine_icon.dart';
+import '../theme/app_theme.dart';
 
 /// The puzzle grid.
 ///
-/// Cells are laid out by hand inside a [Stack] rather than with a `GridView`,
-/// because the region outlines have to be painted across cell boundaries and
-/// that is far easier with known pixel positions.
+/// The whole board is drawn by one painter rather than a tree of widgets. Cell
+/// surfaces, accessibility patterns, markers and region outlines all have to
+/// line up on shared edges, and a painter with the full geometry in hand is far
+/// easier to keep consistent than per-cell borders that meet in the middle. It
+/// also keeps a 9x9 board at 81 painted rects instead of hundreds of widgets.
+///
+/// A transparent [GestureDetector] grid sits on top purely for hit testing.
 class BoardView extends StatelessWidget {
   const BoardView({
     super.key,
     required this.board,
+    required this.theme,
     required this.onTapCell,
     required this.onLongPressCell,
+    this.showPatterns = false,
     this.conflictCells = const {},
     this.hintCell,
     this.relatedCells = const [],
-    this.revealSolution = false,
+    this.interactive = true,
   });
 
   final GameBoard board;
+  final GameTheme theme;
   final ValueChanged<int> onTapCell;
   final ValueChanged<int> onLongPressCell;
+
+  /// Draws a distinct texture per region, the accessible channel that works
+  /// regardless of how the player perceives colour.
+  final bool showPatterns;
+
   final Set<int> conflictCells;
   final int? hintCell;
 
-  /// The row, column or colour a hint is talking about. When this is set, every
-  /// other cell is dimmed so the explanation has something to point at.
+  /// The row, column or colour a hint is talking about. When set, every other
+  /// cell dims so the explanation has something to point at.
   final List<int> relatedCells;
 
-  /// Dims everything except the answer. Used by the "show solution" action.
-  final bool revealSolution;
+  /// False for decorative boards, such as the one behind the title screen.
+  final bool interactive;
 
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     final size = board.size;
-    final spotlight = relatedCells.toSet();
 
-    // A Container (not a DecoratedBox) so the 3px frame insets its child, and
-    // the LayoutBuilder sits inside the frame so cells are measured against the
-    // space actually available to them. Measuring outside the border overflows
-    // the clip and shaves the last row and column.
     return AspectRatio(
       aspectRatio: 1,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: MinedokuTheme.regionBorder(brightness),
-            width: 3,
-          ),
+          borderRadius: BorderRadius.circular(theme.cornerRadius),
+          border: Border.all(color: theme.boardOutline, width: 3),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.18),
@@ -62,54 +66,48 @@ class BoardView extends StatelessWidget {
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(theme.cornerRadius - 3),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final cell = constraints.biggest.shortestSide / size;
 
-              return SizedBox.expand(
-                child: Stack(
-                  children: [
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _BoardPainter(
+                        board: board,
+                        theme: theme,
+                        showPatterns: showPatterns,
+                        blockedWash: AppTheme.blockedOverlay(brightness),
+                        conflictCells: conflictCells,
+                        hintCell: hintCell,
+                        dimmedCells: _dimmed(),
+                      ),
+                    ),
+                  ),
+                  if (interactive)
                     for (var i = 0; i < size * size; i++)
                       Positioned(
                         left: (i % size) * cell,
                         top: (i ~/ size) * cell,
                         width: cell,
                         height: cell,
-                        child: _Cell(
-                          extent: cell,
-                          regionColor: MinedokuTheme.regionColor(
-                            board.puzzle.regions[i],
-                          ),
-                          mark: board.markAt(i),
-                          inConflict: conflictCells.contains(i),
-                          isHint: hintCell == i,
-                          dimmed: (revealSolution &&
-                                  !board.puzzle.solutionCells.contains(i)) ||
-                              (spotlight.isNotEmpty &&
-                                  !spotlight.contains(i) &&
-                                  hintCell != i),
-                          onTap: () => onTapCell(i),
-                          onLongPress: () => onLongPressCell(i),
-                          semanticLabel: 'Row ${i ~/ size + 1}, '
-                              'column ${i % size + 1}',
-                        ),
-                      ),
-                    // Painted last so region outlines sit above every cell.
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: CustomPaint(
-                          painter: _RegionOutlinePainter(
-                            size: size,
-                            regions: board.puzzle.regions,
-                            regionLine: MinedokuTheme.regionBorder(brightness),
-                            cellLine: MinedokuTheme.cellBorder(brightness),
+                        child: Semantics(
+                          // The mark is part of the label so a screen reader
+                          // can read the board, not just locate it.
+                          label: 'Row ${i ~/ size + 1}, '
+                              'column ${i % size + 1}, '
+                              '${_describe(board.markAt(i))}',
+                          button: true,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => onTapCell(i),
+                            onLongPress: () => onLongPressCell(i),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                ],
               );
             },
           ),
@@ -117,157 +115,145 @@ class BoardView extends StatelessWidget {
       ),
     );
   }
-}
 
-class _Cell extends StatelessWidget {
-  const _Cell({
-    required this.extent,
-    required this.regionColor,
-    required this.mark,
-    required this.inConflict,
-    required this.isHint,
-    required this.dimmed,
-    required this.onTap,
-    required this.onLongPress,
-    required this.semanticLabel,
-  });
+  static String _describe(CellMark mark) => switch (mark) {
+        CellMark.empty => 'empty',
+        CellMark.blocked => 'ruled out',
+        CellMark.mine => 'mine placed',
+      };
 
-  final double extent;
-  final Color regionColor;
-  final CellMark mark;
-  final bool inConflict;
-  final bool isHint;
-  final bool dimmed;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-  final String semanticLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-
-    return Semantics(
-      label: semanticLabel,
-      button: true,
-      child: GestureDetector(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedOpacity(
-          opacity: dimmed ? 0.35 : 1,
-          duration: const Duration(milliseconds: 250),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ColoredBox(color: regionColor),
-              if (mark == CellMark.blocked)
-                ColoredBox(color: MinedokuTheme.blockedOverlay(brightness)),
-              Center(child: _content(context)),
-              if (inConflict)
-                Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: MinedokuTheme.conflict,
-                        width: 3,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-              if (isHint)
-                Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: MinedokuTheme.hintGlow,
-                        width: 3,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _content(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 180),
-      transitionBuilder: (child, animation) => ScaleTransition(
-        scale: animation,
-        child: child,
-      ),
-      child: switch (mark) {
-        CellMark.mine => MineIcon(
-            key: const ValueKey('mine'),
-            size: extent * 0.62,
-          ),
-        CellMark.blocked => Icon(
-            Icons.close_rounded,
-            key: const ValueKey('blocked'),
-            size: extent * 0.5,
-            color: const Color(0xFF241E33).withValues(alpha: 0.5),
-          ),
-        CellMark.empty => const SizedBox.shrink(key: ValueKey('empty')),
-      },
-    );
+  Set<int> _dimmed() {
+    if (relatedCells.isEmpty) return const {};
+    final spotlight = relatedCells.toSet();
+    return {
+      for (var i = 0; i < board.size * board.size; i++)
+        if (!spotlight.contains(i) && i != hintCell) i,
+    };
   }
 }
 
-/// Draws the lines between cells: heavy where two regions meet, hairline
-/// inside a region.
-///
-/// Each internal edge is drawn exactly once (from the cell below or to the
-/// right of it) so shared borders do not come out double-weight.
-class _RegionOutlinePainter extends CustomPainter {
-  const _RegionOutlinePainter({
-    required this.size,
-    required this.regions,
-    required this.regionLine,
-    required this.cellLine,
+class _BoardPainter extends CustomPainter {
+  const _BoardPainter({
+    required this.board,
+    required this.theme,
+    required this.showPatterns,
+    required this.blockedWash,
+    required this.conflictCells,
+    required this.hintCell,
+    required this.dimmedCells,
   });
 
-  final int size;
-  final List<int> regions;
-  final Color regionLine;
-  final Color cellLine;
+  final GameBoard board;
+  final GameTheme theme;
+  final bool showPatterns;
+  final Color blockedWash;
+  final Set<int> conflictCells;
+  final int? hintCell;
+  final Set<int> dimmedCells;
 
   @override
-  void paint(Canvas canvas, Size canvasSize) {
-    final cell = canvasSize.width / size;
+  void paint(Canvas canvas, Size size) {
+    final n = board.size;
+    final unit = size.width / n;
+
+    for (var i = 0; i < n * n; i++) {
+      final rect = Rect.fromLTWH(
+        (i % n) * unit,
+        (i ~/ n) * unit,
+        unit,
+        unit,
+      );
+      // Dimming happens per cell rather than over the whole board, so the
+      // spotlit region keeps its full colour while the rest recedes.
+      final dim = dimmedCells.contains(i);
+      if (dim) canvas.saveLayer(rect, Paint()..color = const Color(0x4DFFFFFF));
+
+      CellArt.paintSurface(
+        canvas,
+        rect,
+        fill: theme.regionColor(board.puzzle.regions[i]),
+        surface: theme.surface,
+      );
+
+      if (showPatterns) {
+        RegionPattern.forRegion(board.puzzle.regions[i])
+            .paint(canvas, rect, theme.patternColor, unit);
+      }
+
+      final mark = board.markAt(i);
+      if (mark == CellMark.blocked) {
+        canvas.drawRect(rect, Paint()..color = blockedWash);
+        CellArt.paintBlocked(
+          canvas,
+          rect,
+          glyph: theme.blockedGlyph,
+          color: theme.glyphColor.withValues(alpha: 0.55),
+        );
+      } else if (mark == CellMark.mine) {
+        CellArt.paintMine(
+          canvas,
+          rect,
+          glyph: theme.mineGlyph,
+          color: theme.glyphColor,
+        );
+      }
+
+      if (conflictCells.contains(i)) {
+        _outline(canvas, rect, AppTheme.conflict);
+      } else if (hintCell == i) {
+        _outline(canvas, rect, AppTheme.hintGlow);
+      }
+
+      if (dim) canvas.restore();
+    }
+
+    _paintGrid(canvas, unit, n);
+  }
+
+  void _outline(Canvas canvas, Rect rect, Color color) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.deflate(2.5), const Radius.circular(4)),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+  }
+
+  /// Heavy lines where two regions meet, hairlines inside a region.
+  ///
+  /// Each internal edge is drawn exactly once, from the cell below or to the
+  /// right of it, so shared borders never come out double weight.
+  void _paintGrid(Canvas canvas, double unit, int n) {
     final heavy = Paint()
-      ..color = regionLine
+      ..color = theme.boardOutline
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.square;
     final light = Paint()
-      ..color = cellLine
+      ..color = theme.gridLine
       ..strokeWidth = 1;
 
-    for (var row = 0; row < size; row++) {
-      for (var col = 0; col < size; col++) {
-        final index = row * size + col;
-        final x = col * cell;
-        final y = row * cell;
+    for (var row = 0; row < n; row++) {
+      for (var col = 0; col < n; col++) {
+        final index = row * n + col;
+        final x = col * unit;
+        final y = row * unit;
 
         if (row > 0) {
-          final differs = regions[index - size] != regions[index];
+          final differs =
+              board.puzzle.regions[index - n] != board.puzzle.regions[index];
           canvas.drawLine(
             Offset(x, y),
-            Offset(x + cell, y),
+            Offset(x + unit, y),
             differs ? heavy : light,
           );
         }
         if (col > 0) {
-          final differs = regions[index - 1] != regions[index];
+          final differs =
+              board.puzzle.regions[index - 1] != board.puzzle.regions[index];
           canvas.drawLine(
             Offset(x, y),
-            Offset(x, y + cell),
+            Offset(x, y + unit),
             differs ? heavy : light,
           );
         }
@@ -276,8 +262,13 @@ class _RegionOutlinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RegionOutlinePainter oldDelegate) =>
-      oldDelegate.size != size ||
-      oldDelegate.regions != regions ||
-      oldDelegate.regionLine != regionLine;
+  bool shouldRepaint(_BoardPainter old) =>
+      old.theme.id != theme.id ||
+      old.showPatterns != showPatterns ||
+      old.hintCell != hintCell ||
+      old.blockedWash != blockedWash ||
+      !setEquals(old.conflictCells, conflictCells) ||
+      !setEquals(old.dimmedCells, dimmedCells) ||
+      !listEquals(old.board.marks, board.marks) ||
+      !listEquals(old.board.puzzle.regions, board.puzzle.regions);
 }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
 import 'state/app_state.dart';
-import 'theme.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,12 +21,20 @@ class MinedokuApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppScope(
       state: appState,
-      child: MaterialApp(
-        title: 'Minedoku',
-        debugShowCheckedModeBanner: false,
-        theme: MinedokuTheme.light(),
-        darkTheme: MinedokuTheme.dark(),
-        home: const HomeScreen(),
+      // Rebuilt on any settings change so switching theme repaints the whole
+      // app, not just the board.
+      child: ListenableBuilder(
+        listenable: appState,
+        builder: (context, _) {
+          final game = appState.gameTheme;
+          return MaterialApp(
+            title: 'Minedoku',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.build(game, Brightness.light),
+            darkTheme: AppTheme.build(game, Brightness.dark),
+            home: const HomeScreen(),
+          );
+        },
       ),
     );
   }

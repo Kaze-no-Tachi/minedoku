@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:minedoku_engine/minedoku_engine.dart';
 
 import '../state/app_state.dart';
-import '../theme.dart';
+import '../theme/app_theme.dart';
 import 'game_screen.dart';
 import 'how_to_play_screen.dart';
 import 'levels_screen.dart';
+import 'theme_screen.dart';
 
 /// Main menu: continue, campaign, daily and practice.
 class HomeScreen extends StatelessWidget {
@@ -15,8 +16,8 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final appState = AppScope.of(context);
     final theme = Theme.of(context);
-    final level = appState.highestUnlockedLevel;
-    final savedLevel = appState.savedLevel;
+    final level = appState.progress.highestUnlockedLevel;
+    final savedLevel = appState.progress.savedLevel;
 
     return Scaffold(
       body: SafeArea(
@@ -65,8 +66,8 @@ class HomeScreen extends StatelessWidget {
                           MaterialPageRoute<void>(
                             builder: (_) => GameScreen(
                               spec: Levels.forLevel(savedLevel),
-                              restoreMarks: appState.savedMarks,
-                              restoreSeconds: appState.savedSeconds,
+                              restoreMarks: appState.progress.savedMarks,
+                              restoreSeconds: appState.progress.savedSeconds,
                             ),
                           ),
                         ),
@@ -102,7 +103,7 @@ class HomeScreen extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) =>
-                              GameScreen(spec: spec, isCampaign: false),
+                              GameScreen(spec: spec, isCampaign: false, isDaily: true),
                         ),
                       );
                     },
@@ -176,6 +177,7 @@ class _RulesStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final game = AppScope.of(context).gameTheme;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -184,13 +186,13 @@ class _RulesStrip extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: MinedokuTheme.regionColor(i * 2).withValues(alpha: 0.9),
+              color: game.regionColor(i * 2).withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
               MinedokuRules.summaries[i],
               style: theme.textTheme.labelMedium?.copyWith(
-                color: const Color(0xFF241E33),
+                color: game.glyphColor,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -216,23 +218,46 @@ class _SettingsSheetState extends State<_SettingsSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          ListTile(
+            leading: const Icon(Icons.palette_outlined),
+            title: const Text('Look and feel'),
+            subtitle: Text(appState.gameTheme.name),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const ThemeScreen()),
+              );
+            },
+          ),
           SwitchListTile(
-            value: appState.autoBlock,
+            value: appState.settings.showTimer,
+            title: const Text('Show the timer'),
+            subtitle: const Text(
+              'Your time is still recorded either way.',
+            ),
+            onChanged: (value) async {
+              await appState.settings.setShowTimer(value);
+              if (mounted) setState(() {});
+            },
+          ),
+          SwitchListTile(
+            value: appState.settings.autoBlock,
             title: const Text('Auto-mark ruled-out cells'),
             subtitle: const Text(
               'Placing a mine X\'s out every cell it rules out.',
             ),
             onChanged: (value) async {
-              await appState.setAutoBlock(value);
+              await appState.settings.setAutoBlock(value);
               if (mounted) setState(() {});
             },
           ),
           SwitchListTile(
-            value: appState.haptics,
+            value: appState.settings.haptics,
             title: const Text('Vibration'),
             subtitle: const Text('A short buzz on placing and winning.'),
             onChanged: (value) async {
-              await appState.setHaptics(value);
+              await appState.settings.setHaptics(value);
               if (mounted) setState(() {});
             },
           ),

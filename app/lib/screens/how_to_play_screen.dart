@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:minedoku_engine/minedoku_engine.dart';
 
-import '../theme.dart';
-import '../widgets/mine_icon.dart';
+import '../state/app_state.dart';
+import '../theme/app_theme.dart';
+import '../widgets/board_view.dart';
 
 /// Explains the rules with a small worked example.
 class HowToPlayScreen extends StatelessWidget {
@@ -101,57 +103,26 @@ class _ExampleBoard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final mines = {for (var r = 0; r < 4; r++) r * 4 + _solution[r]};
+    final appState = AppScope.of(context);
+    // The real board widget, not a lookalike, so the illustration always shows
+    // the player exactly what they are about to see.
+    final puzzle = Puzzle(size: 4, regions: _regions, solution: _solution);
+    final board = GameBoard(puzzle, autoBlock: false);
+    for (final cell in puzzle.solutionCells) {
+      board.setMark(cell, CellMark.mine);
+    }
 
     return Center(
       child: SizedBox(
-        width: 200,
-        height: 200,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: MinedokuTheme.regionBorder(brightness),
-              width: 3,
-            ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(9),
-            child: GridView.count(
-              crossAxisCount: 4,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                for (var i = 0; i < 16; i++)
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: MinedokuTheme.regionColor(_regions[i]),
-                      border: Border(
-                        top: BorderSide(
-                          color: i >= 4 && _regions[i - 4] != _regions[i]
-                              ? MinedokuTheme.regionBorder(brightness)
-                              : MinedokuTheme.cellBorder(brightness),
-                          width: i >= 4 && _regions[i - 4] != _regions[i]
-                              ? 2.5
-                              : 0.5,
-                        ),
-                        left: BorderSide(
-                          color: i % 4 != 0 && _regions[i - 1] != _regions[i]
-                              ? MinedokuTheme.regionBorder(brightness)
-                              : MinedokuTheme.cellBorder(brightness),
-                          width: i % 4 != 0 && _regions[i - 1] != _regions[i]
-                              ? 2.5
-                              : 0.5,
-                        ),
-                      ),
-                    ),
-                    child: mines.contains(i)
-                        ? const Center(child: MineIcon(size: 28))
-                        : null,
-                  ),
-              ],
-            ),
-          ),
+        width: 210,
+        height: 210,
+        child: BoardView(
+          board: board,
+          theme: appState.gameTheme,
+          showPatterns: appState.showPatterns,
+          interactive: false,
+          onTapCell: (_) {},
+          onLongPressCell: (_) {},
         ),
       ),
     );

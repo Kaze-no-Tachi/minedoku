@@ -13,3 +13,4 @@ export 'src/prng.dart';
 export 'src/puzzle.dart';
 export 'src/rules.dart';
 export 'src/solver.dart';
+export 'src/streaks.dart';

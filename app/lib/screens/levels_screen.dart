@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:minedoku_engine/minedoku_engine.dart';
 
 import '../state/app_state.dart';
-import '../theme.dart';
+import '../theme/app_theme.dart';
 import 'game_screen.dart';
 
 /// Grid of campaign levels, showing what is finished and what is still locked.
@@ -15,7 +15,7 @@ class LevelsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = AppScope.of(context);
-    final unlocked = appState.highestUnlockedLevel;
+    final unlocked = appState.progress.highestUnlockedLevel;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Levels')),
@@ -38,8 +38,8 @@ class LevelsScreen extends StatelessWidget {
                 return _LevelTile(
                   level: level,
                   locked: level > unlocked,
-                  completed: appState.isCompleted(level),
-                  bestSeconds: appState.bestTime(level),
+                  completed: appState.progress.isCompleted(level),
+                  bestSeconds: appState.progress.bestTime(level),
                 );
               },
             ),
@@ -67,7 +67,10 @@ class _LevelTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final spec = Levels.forLevel(level);
-    final tint = MinedokuTheme.regionColor(spec.size - 5);
+    // Tinted by board size, using the active theme's own palette so the grid
+    // changes character with the rest of the app.
+    final game = AppScope.of(context).gameTheme;
+    final tint = game.regionColor(spec.size - 5);
 
     return Opacity(
       opacity: locked ? 0.4 : 1,
@@ -101,7 +104,7 @@ class _LevelTile extends StatelessWidget {
                     '$level',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: completed ? const Color(0xFF241E33) : null,
+                      color: completed ? game.glyphColor : null,
                     ),
                   ),
                 const SizedBox(height: 2),
@@ -109,7 +112,7 @@ class _LevelTile extends StatelessWidget {
                   '${spec.size}x${spec.size}',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: completed
-                        ? const Color(0xFF241E33).withValues(alpha: 0.7)
+                        ? game.glyphColor.withValues(alpha: 0.7)
                         : theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -118,7 +121,7 @@ class _LevelTile extends StatelessWidget {
                     '${(bestSeconds! ~/ 60).toString().padLeft(2, '0')}:'
                     '${(bestSeconds! % 60).toString().padLeft(2, '0')}',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: const Color(0xFF241E33).withValues(alpha: 0.7),
+                      color: game.glyphColor.withValues(alpha: 0.7),
                     ),
                   ),
               ],

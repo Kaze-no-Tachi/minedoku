@@ -3,16 +3,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:minedoku/screens/game_screen.dart';
 import 'package:minedoku/screens/home_screen.dart';
 import 'package:minedoku/state/app_state.dart';
-import 'package:minedoku/theme.dart';
+import 'package:minedoku/widgets/board_view.dart';
+import 'package:minedoku/theme/app_theme.dart';
 import 'package:minedoku_engine/minedoku_engine.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// The live board behind the on-screen grid. The board is painted rather than
+/// built from per-cell widgets, so tests read its state here instead of
+/// counting icons.
+GameBoard boardOf(WidgetTester tester) =>
+    tester.widget<BoardView>(find.byType(BoardView)).board;
+
+int blockedCells(WidgetTester tester) =>
+    boardOf(tester).marks.where((m) => m == CellMark.blocked).length;
 
 /// Wraps a screen in the app's theme and state scope.
 Widget hostFor(Widget child, AppState state) {
   return AppScope(
     state: state,
     child: MaterialApp(
-      theme: MinedokuTheme.light(),
+      theme: AppTheme.build(GameThemes.enamel, Brightness.light),
       home: child,
     ),
   );
@@ -44,7 +54,7 @@ void main() {
       await tester.pumpWidget(hostFor(const HomeScreen(), appState));
       expect(find.textContaining('Continue level'), findsNothing);
 
-      await appState.saveGame(level: 3, marks: '.' * 36, seconds: 12);
+      await appState.progress.saveGame(level: 3, marks: '.' * 36, seconds: 12);
       await tester.pumpWidget(hostFor(const HomeScreen(), appState));
       await tester.pump();
 
@@ -90,13 +100,13 @@ void main() {
       await tester.tap(cell); // mine, which auto-marks the cells it rules out
       await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.close_rounded), findsWidgets,
+      expect(blockedCells(tester), greaterThan(0),
           reason: 'placing a mine should X out the cells it rules out');
 
       await tester.tap(cell); // back to empty
       await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.close_rounded), findsNothing,
+      expect(blockedCells(tester), 0,
           reason: 'removing the mine must take its X marks with it');
       expect(find.text('5'), findsWidgets, reason: 'all 5 mines are free again');
     });
@@ -107,21 +117,20 @@ void main() {
       await tester.pumpWidget(hostFor(GameScreen(spec: spec), appState));
       await tester.pumpAndSettle();
 
-      int dimmed() => tester
-          .widgetList<AnimatedOpacity>(find.byType(AnimatedOpacity))
-          .where((w) => w.opacity < 1)
-          .length;
+      List<int> spotlight() =>
+          tester.widget<BoardView>(find.byType(BoardView)).relatedCells;
 
-      expect(dimmed(), 0, reason: 'nothing is dimmed before a hint');
+      expect(spotlight(), isEmpty, reason: 'nothing is spotlit before a hint');
 
       await tester.ensureVisible(find.text('Hint'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Hint'));
       await tester.pumpAndSettle();
 
-      expect(dimmed(), greaterThan(0),
+      expect(spotlight(), isNotEmpty,
           reason: 'the hint should spotlight the row, column or colour');
-      expect(dimmed(), lessThan(25), reason: 'it must not dim the whole board');
+      expect(spotlight().length, lessThan(25),
+          reason: 'it must spotlight one unit, not the whole board');
     });
 
     testWidgets('the hint button explains a move', (tester) async {
@@ -163,36 +172,36 @@ void main() {
 
   group('progress', () {
     test('a win unlocks the next level and stores the best time', () async {
-      expect(appState.highestUnlockedLevel, 1);
+      expect(appState.progress.highestUnlockedLevel, 1);
 
-      await appState.recordWin(1, 90);
-      expect(appState.highestUnlockedLevel, 2);
-      expect(appState.isCompleted(1), isTrue);
-      expect(appState.bestTime(1), 90);
+      await appState.progress.recordWin(level: 1, size: 5, seconds: 90, hintsUsed: 0);
+      expect(appState.progress.highestUnlockedLevel, 2);
+      expect(appState.progress.isCompleted(1), isTrue);
+      expect(appState.progress.bestTime(1), 90);
 
-      await appState.recordWin(1, 120);
-      expect(appState.bestTime(1), 90, reason: 'slower runs must not overwrite');
+      await appState.progress.recordWin(level: 1, size: 5, seconds: 120, hintsUsed: 0);
+      expect(appState.progress.bestTime(1), 90, reason: 'slower runs must not overwrite');
 
-      await appState.recordWin(1, 45);
-      expect(appState.bestTime(1), 45);
+      await appState.progress.recordWin(level: 1, size: 5, seconds: 45, hintsUsed: 0);
+      expect(appState.progress.bestTime(1), 45);
     });
 
     test('reset clears everything', () async {
-      await appState.recordWin(1, 30);
-      await appState.saveGame(level: 2, marks: '....', seconds: 5);
+      await appState.progress.recordWin(level: 1, size: 5, seconds: 30, hintsUsed: 0);
+      await appState.progress.saveGame(level: 2, marks: '....', seconds: 5);
 
       await appState.resetProgress();
 
-      expect(appState.highestUnlockedLevel, 1);
-      expect(appState.completedLevels, isEmpty);
-      expect(appState.bestTime(1), isNull);
-      expect(appState.savedLevel, isNull);
+      expect(appState.progress.highestUnlockedLevel, 1);
+      expect(appState.progress.completedLevels, isEmpty);
+      expect(appState.progress.bestTime(1), isNull);
+      expect(appState.progress.savedLevel, isNull);
     });
 
     test('settings default on and can be turned off', () async {
-      expect(appState.autoBlock, isTrue);
-      await appState.setAutoBlock(false);
-      expect(appState.autoBlock, isFalse);
+      expect(appState.settings.autoBlock, isTrue);
+      await appState.settings.setAutoBlock(false);
+      expect(appState.settings.autoBlock, isFalse);
     });
   });
 }

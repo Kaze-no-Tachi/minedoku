@@ -1,67 +1,56 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
-/// The mine marker, drawn rather than loaded.
+import '../theme/cell_art.dart';
+
+/// A single marker drawn on its own, away from a board.
 ///
-/// Material has no bomb glyph and emoji rendering differs wildly between
-/// Android, iOS and browsers, so the shape is painted directly. That keeps it
-/// identical everywhere and sharp at any size.
+/// Used for the app icon, the title lockup and anywhere a glyph appears in
+/// running text. It paints through [CellArt] so there is exactly one definition
+/// of each shape: the mine on the board and the mine on the icon can never
+/// drift apart.
 class MineIcon extends StatelessWidget {
-  const MineIcon({super.key, required this.size, this.color});
+  const MineIcon({
+    super.key,
+    required this.size,
+    this.color,
+    this.glyph = MineGlyph.mine,
+  });
 
   final double size;
   final Color? color;
+  final MineGlyph glyph;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox.square(
       dimension: size,
       child: CustomPaint(
-        painter: _MinePainter(color ?? const Color(0xFF241E33)),
+        painter: _GlyphPainter(
+          glyph: glyph,
+          color: color ?? const Color(0xFF241E33),
+        ),
       ),
     );
   }
 }
 
-class _MinePainter extends CustomPainter {
-  const _MinePainter(this.color);
+class _GlyphPainter extends CustomPainter {
+  const _GlyphPainter({required this.glyph, required this.color});
 
+  final MineGlyph glyph;
   final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final centre = Offset(size.width / 2, size.height / 2);
-    final bodyRadius = size.width * 0.30;
-    final spikeLength = size.width * 0.46;
-
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    final spikePaint = Paint()
-      ..color = color
-      ..strokeWidth = size.width * 0.10
-      ..strokeCap = StrokeCap.round;
-
-    for (var i = 0; i < 8; i++) {
-      final angle = i * math.pi / 4;
-      canvas.drawLine(
-        centre + Offset(math.cos(angle), math.sin(angle)) * (bodyRadius * 0.7),
-        centre + Offset(math.cos(angle), math.sin(angle)) * spikeLength,
-        spikePaint,
-      );
-    }
-
-    canvas.drawCircle(centre, bodyRadius, paint);
-
-    // A small highlight stops the body reading as a flat blob.
-    canvas.drawCircle(
-      centre.translate(-bodyRadius * 0.32, -bodyRadius * 0.32),
-      bodyRadius * 0.22,
-      Paint()..color = Colors.white.withValues(alpha: 0.75),
+    CellArt.paintMine(
+      canvas,
+      Offset.zero & size,
+      glyph: glyph,
+      color: color,
     );
   }
 
   @override
-  bool shouldRepaint(_MinePainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(_GlyphPainter old) =>
+      old.color != color || old.glyph != glyph;
 }

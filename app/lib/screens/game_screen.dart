@@ -3,7 +3,7 @@ import 'package:minedoku_engine/minedoku_engine.dart';
 
 import '../state/app_state.dart';
 import '../state/game_controller.dart';
-import '../theme.dart';
+import '../theme/app_theme.dart';
 import '../widgets/board_view.dart';
 
 /// Plays one board.
@@ -12,12 +12,14 @@ class GameScreen extends StatefulWidget {
     super.key,
     required this.spec,
     this.isCampaign = true,
+    this.isDaily = false,
     this.restoreMarks,
     this.restoreSeconds = 0,
   });
 
   final LevelSpec spec;
   final bool isCampaign;
+  final bool isDaily;
   final String? restoreMarks;
   final int restoreSeconds;
 
@@ -44,6 +46,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       spec: widget.spec,
       appState: AppScope.of(context),
       isCampaign: widget.isCampaign,
+      isDaily: widget.isDaily,
     );
     controller.addListener(_onControllerChanged);
     _controller = controller;
@@ -84,7 +87,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   Future<void> _showWinSheet() async {
     final controller = _controller!;
     final appState = AppScope.of(context);
-    final best = widget.isCampaign ? appState.bestTime(widget.spec.number) : null;
+    final best = widget.isCampaign ? appState.progress.bestTime(widget.spec.number) : null;
 
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -156,6 +159,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   Widget _buildGame(BuildContext context, GameController controller) {
     final theme = Theme.of(context);
+    final appState = AppScope.of(context);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -170,10 +174,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _Readouts(controller: controller),
+                      _Readouts(
+                        controller: controller,
+                        showTimer: appState.settings.showTimer,
+                      ),
                       const SizedBox(height: 16),
                       BoardView(
                         board: controller.board!,
+                        theme: appState.gameTheme,
+                        showPatterns: appState.showPatterns,
                         conflictCells: controller.conflictCells,
                         hintCell: controller.hint?.cell,
                         relatedCells: controller.hint?.relatedCells ?? const [],
@@ -195,7 +204,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: controller.conflictCells.isNotEmpty &&
                                       controller.hint == null
-                                  ? MinedokuTheme.conflict
+                                  ? AppTheme.conflict
                                   : theme.colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w500,
                             ),
@@ -217,9 +226,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 }
 
 class _Readouts extends StatelessWidget {
-  const _Readouts({required this.controller});
+  const _Readouts({required this.controller, required this.showTimer});
 
   final GameController controller;
+
+  /// A running clock makes some players anxious. The time is still recorded
+  /// and still shown on the win sheet.
+  final bool showTimer;
 
   @override
   Widget build(BuildContext context) {
@@ -232,10 +245,12 @@ class _Readouts extends StatelessWidget {
             highlight: controller.hasWon,
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _Readout(label: 'Time', value: controller.formattedTime),
-        ),
+        if (showTimer) ...[
+          const SizedBox(width: 10),
+          Expanded(
+            child: _Readout(label: 'Time', value: controller.formattedTime),
+          ),
+        ],
         const SizedBox(width: 10),
         Expanded(
           child: _Readout(
@@ -284,7 +299,7 @@ class _Readout extends StatelessWidget {
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w700,
               fontFeatures: const [FontFeature.tabularFigures()],
-              color: highlight ? MinedokuTheme.hintGlow : null,
+              color: highlight ? AppTheme.hintGlow : null,
             ),
           ),
         ],

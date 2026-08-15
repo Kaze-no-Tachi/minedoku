@@ -15,6 +15,7 @@ class GameController extends ChangeNotifier {
     required this.spec,
     required this.appState,
     this.isCampaign = true,
+    this.isDaily = false,
   });
 
   final LevelSpec spec;
@@ -23,6 +24,9 @@ class GameController extends ChangeNotifier {
   /// Campaign boards save progress and unlock the next level. Dailies and
   /// practice boards do neither.
   final bool isCampaign;
+
+  /// Set for the daily puzzle, which feeds the streak.
+  final bool isDaily;
 
   static const _generator = PuzzleGenerator();
   static const _hintEngine = HintEngine();
@@ -74,7 +78,7 @@ class GameController extends ChangeNotifier {
     await Future<void>.delayed(Duration.zero);
 
     final puzzle = _generator.generate(size: spec.size, seed: spec.seed);
-    final board = GameBoard(puzzle, autoBlock: appState.autoBlock);
+    final board = GameBoard(puzzle, autoBlock: appState.settings.autoBlock);
     if (restoreMarks != null) {
       board.restoreMarks(restoreMarks);
     }
@@ -85,6 +89,11 @@ class GameController extends ChangeNotifier {
     _won = board.isSolved;
     notifyListeners();
 
+    // Counted once per board opened, not per attempt, so the win rate means
+    // "boards I finished" rather than "times I pressed replay".
+    if (restoreMarks == null) {
+      unawaited(appState.stats.recordStart(spec.size));
+    }
     if (!_won) _startTimer();
   }
 
@@ -184,15 +193,39 @@ class GameController extends ChangeNotifier {
     _buzz(HapticFeedback.heavyImpact);
     notifyListeners();
 
+    // Lifetime stats count every finished board, campaign or not. Only the
+    // campaign unlocks levels and awards stars.
+    await appState.stats.recordWin(
+      size: spec.size,
+      seconds: _seconds,
+      hints: _hintsUsed,
+    );
+    if (isDaily) {
+      await appState.stats.recordDailyWin();
+    }
     if (isCampaign) {
-      await appState.clearSavedGame();
-      await appState.recordWin(spec.number, _seconds);
+      await appState.progress.clearSavedGame();
+      await appState.progress.recordWin(
+        level: spec.number,
+        size: spec.size,
+        seconds: _seconds,
+        hintsUsed: _hintsUsed,
+      );
     }
   }
 
+  /// Stars this run earned, for the win sheet. Zero outside the campaign.
+  int get starsEarned => isCampaign
+      ? LevelResult.starsFor(
+          seconds: _seconds,
+          hintsUsed: _hintsUsed,
+          size: spec.size,
+        )
+      : 0;
+
   void _persist() {
     if (!isCampaign || _board == null) return;
-    unawaited(appState.saveGame(
+    unawaited(appState.progress.saveGame(
       level: spec.number,
       marks: _board!.encodeMarks(),
       seconds: _seconds,
@@ -200,7 +233,7 @@ class GameController extends ChangeNotifier {
   }
 
   void _buzz(Future<void> Function() effect) {
-    if (appState.haptics) unawaited(effect());
+    if (appState.settings.haptics) unawaited(effect());
   }
 
   @override
