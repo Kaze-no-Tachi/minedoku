@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:minedoku_engine/minedoku_engine.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// When the board draws a distinct pattern in each colour region.
@@ -41,6 +42,7 @@ class SettingsStore extends ChangeNotifier {
   static const _kShowTimer = 'show_timer';
   static const _kSeenIntro = 'seen_intro';
   static const _kSeenTutorial = 'seen_tutorial';
+  static const _kMode = 'game_mode';
 
   final SharedPreferences _prefs;
 
@@ -59,6 +61,20 @@ class SettingsStore extends ChangeNotifier {
 
   Future<void> setPatternMode(PatternMode value) =>
       _write(_kPatterns, value.name);
+
+  /// Difficulty applied to new boards.
+  ///
+  /// Read once when a board opens, so changing it never moves the goalposts
+  /// under a game already in progress.
+  GameMode get gameMode {
+    final stored = _prefs.getString(_kMode);
+    return GameMode.values.firstWhere(
+      (m) => m.name == stored,
+      orElse: () => GameMode.relaxed,
+    );
+  }
+
+  Future<void> setGameMode(GameMode value) => _write(_kMode, value.name);
 
   /// Placing a mine also X's out every cell the rules now forbid.
   bool get autoBlock => _prefs.getBool(_kAutoBlock) ?? true;

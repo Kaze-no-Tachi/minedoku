@@ -36,8 +36,12 @@ class GameController extends ChangeNotifier {
   Hint? _hint;
   bool _loading = true;
   bool _won = false;
+  bool _lost = false;
   int _seconds = 0;
   int _hintsUsed = 0;
+  int _mistakes = 0;
+  int? _rejectedCell;
+  late GameMode _mode;
 
   GameBoard? get board => _board;
 
@@ -51,6 +55,26 @@ class GameController extends ChangeNotifier {
 
   /// The hint currently being shown, cleared as soon as the player moves.
   Hint? get hint => _hint;
+
+  /// Difficulty for this board, fixed when it was opened. Changing the setting
+  /// mid-game would move the goalposts under the player.
+  GameMode get mode => _mode;
+
+  bool get hasLost => _lost;
+
+  /// True once the board is over, won or lost.
+  bool get isFinished => _won || _lost;
+
+  int get mistakes => _mistakes;
+
+  int get livesLeft => MistakeRules.livesLeft(_mistakes);
+
+  /// The cell of the most recent rejected placement, for a brief flash.
+  int? get rejectedCell => _rejectedCell;
+
+  /// Hints are what hard mode gives up. Limited mistakes mean little if the
+  /// answer is a button press away.
+  bool get hintsAllowed => !_mode.isHard;
 
   int get minesRemaining => _board?.minesRemaining ?? spec.size;
 
@@ -71,6 +95,7 @@ class GameController extends ChangeNotifier {
   /// Generation is fast (a few milliseconds, ~60ms for the largest boards), but
   /// it still happens off the first frame so the screen can paint immediately.
   Future<void> start({String? restoreMarks, int restoreSeconds = 0}) async {
+    _mode = appState.settings.gameMode;
     _loading = true;
     notifyListeners();
 
@@ -120,8 +145,13 @@ class GameController extends ChangeNotifier {
 
   void tapCell(int index) {
     final board = _board;
-    if (board == null || _won) return;
+    if (board == null || isFinished) return;
     _hint = null;
+    _clearRejection();
+    // Cycling empty -> blocked -> mine, so only the step onto a mine can be a
+    // mistake. Marking a cell clear is never punished, even when wrong.
+    final becomingMine = board.markAt(index) == CellMark.blocked;
+    if (becomingMine && _rejectPlacement(index)) return;
     board.cycle(index);
     _afterMove(placed: board.markAt(index) == CellMark.mine);
   }
@@ -129,32 +159,89 @@ class GameController extends ChangeNotifier {
   /// Long press puts a mine down directly, skipping the X step.
   void placeMine(int index) {
     final board = _board;
-    if (board == null || _won) return;
+    if (board == null || isFinished) return;
     _hint = null;
+    _clearRejection();
+    final removing = board.markAt(index) == CellMark.mine;
+    if (!removing && _rejectPlacement(index)) return;
     board.setMark(
       index,
-      board.markAt(index) == CellMark.mine ? CellMark.empty : CellMark.mine,
+      removing ? CellMark.empty : CellMark.mine,
     );
     _afterMove(placed: board.markAt(index) == CellMark.mine);
   }
 
-  void undo() {
-    if (_board == null || _won) return;
+  /// In hard mode, refuses a mine that cannot be part of the solution and
+  /// charges a life for it.
+  ///
+  /// The mine is not left on the board: it is known to be wrong, and leaving a
+  /// wrong mine sitting there while the game says "mistake" reads as a bug.
+  bool _rejectPlacement(int index) {
+    if (!_mode.isHard) return false;
+    if (!MistakeRules.isMistake(_board!.puzzle, index)) return false;
+
+    _mistakes++;
+    _rejectedCell = index;
+    _buzz(HapticFeedback.heavyImpact);
+    if (MistakeRules.isLost(_mistakes)) {
+      _lose();
+    } else {
+      notifyListeners();
+    }
+    return true;
+  }
+
+  /// Drops the highlight and message from the last refused placement.
+  ///
+  /// Called at the start of the next action rather than on a timer: the player
+  /// should still be able to read why a mine was refused when they look back
+  /// at the screen, and a self-expiring message is one they can miss entirely.
+  void _clearRejection() => _rejectedCell = null;
+
+  Future<void> _lose() async {
+    _lost = true;
+    _timer?.cancel();
+    _timer = null;
+    _buzz(HapticFeedback.heavyImpact);
+    notifyListeners();
+    // A lost board is not resumable: it would restore into a dead game.
+    if (isCampaign) await appState.progress.clearSavedGame();
+  }
+
+  /// Starts the same board again from empty, keeping its difficulty.
+  void retry() {
+    _mistakes = 0;
+    _lost = false;
+    _won = false;
+    _rejectedCell = null;
     _hint = null;
+    _hintsUsed = 0;
+    _seconds = 0;
+    _board?.clear();
+    notifyListeners();
+    _startTimer();
+  }
+
+  void undo() {
+    if (_board == null || isFinished) return;
+    _hint = null;
+    _clearRejection();
     _board!.undo();
     _afterMove(placed: false);
   }
 
   void redo() {
-    if (_board == null || _won) return;
+    if (_board == null || isFinished) return;
     _hint = null;
+    _clearRejection();
     _board!.redo();
     _afterMove(placed: false);
   }
 
   void clearBoard() {
-    if (_board == null || _won) return;
+    if (_board == null || isFinished) return;
     _hint = null;
+    _clearRejection();
     _board!.clear();
     _afterMove(placed: false);
   }
@@ -162,7 +249,7 @@ class GameController extends ChangeNotifier {
   /// Asks the engine for the easiest next step and highlights it.
   void requestHint() {
     final board = _board;
-    if (board == null || _won) return;
+    if (board == null || isFinished || !hintsAllowed) return;
     _hint = _hintEngine.next(board);
     _hintsUsed++;
     _buzz(HapticFeedback.selectionClick);

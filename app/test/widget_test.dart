@@ -215,6 +215,137 @@ void main() {
     });
   });
 
+  group('hard mode', () {
+    // Cell indices map to the GestureDetector grid in order, so tapping
+    // `cellAt(i)` taps board cell i.
+    Finder cellAt(int index) => find.byType(GestureDetector).at(index);
+
+    late Puzzle puzzle;
+    late List<int> wrongCells;
+
+    setUp(() async {
+      final spec = Levels.forLevel(1); // 5x5
+      puzzle = const PuzzleGenerator()
+          .generate(size: spec.size, seed: spec.seed);
+      wrongCells = [
+        for (var i = 0; i < spec.size * spec.size; i++)
+          if (!puzzle.solutionCells.contains(i)) i,
+      ];
+      await appState.settings.setGameMode(GameMode.hard);
+    });
+
+    /// Two taps: empty to ruled-out, then an attempt to place a mine.
+    Future<void> tryMine(WidgetTester tester, int cell) async {
+      await tester.tap(cellAt(cell));
+      await tester.pumpAndSettle();
+      await tester.tap(cellAt(cell));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows the mistake budget instead of the board size',
+        (tester) async {
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      expect(find.text('MISTAKES LEFT'), findsOneWidget);
+      expect(find.text('BOARD'), findsNothing);
+      expect(find.text('${MistakeRules.lives}'), findsWidgets);
+    });
+
+    testWidgets('a wrong mine is refused and costs a life', (tester) async {
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      await tryMine(tester, wrongCells.first);
+
+      // Refused, so no mine landed and the count did not move.
+      expect(
+        boardOf(tester).marks.where((m) => m == CellMark.mine).length,
+        0,
+        reason: 'a known-wrong mine must not stay on the board',
+      );
+      expect(find.text('${MistakeRules.lives - 1}'), findsWidgets);
+      expect(find.textContaining('mistakes left'), findsOneWidget);
+    });
+
+    testWidgets('a correct mine costs nothing', (tester) async {
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      await tryMine(tester, puzzle.solutionCells.first);
+
+      expect(
+        boardOf(tester).marks.where((m) => m == CellMark.mine).length,
+        1,
+        reason: 'a solution cell is always allowed',
+      );
+      expect(find.text('${MistakeRules.lives}'), findsWidgets,
+          reason: 'lives untouched');
+    });
+
+    testWidgets('running out blows up the board', (tester) async {
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      for (var i = 0; i < MistakeRules.lives; i++) {
+        await tryMine(tester, wrongCells[i]);
+      }
+
+      expect(find.text('Board destroyed'), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+    });
+
+    testWidgets('trying again restores the lives', (tester) async {
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      for (var i = 0; i < MistakeRules.lives; i++) {
+        await tryMine(tester, wrongCells[i]);
+      }
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Board destroyed'), findsNothing);
+      expect(find.text('${MistakeRules.lives}'), findsWidgets);
+      expect(boardOf(tester).marks, everyElement(CellMark.empty));
+    });
+
+    testWidgets('hints are unavailable', (tester) async {
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      final hint = tester.widget<OutlinedButton>(
+        find.ancestor(
+          of: find.text('Hint'),
+          matching: find.byType(OutlinedButton),
+        ),
+      );
+      expect(hint.onPressed, isNull);
+    });
+
+    testWidgets('relaxed mode refuses nothing', (tester) async {
+      await appState.settings.setGameMode(GameMode.relaxed);
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      await tryMine(tester, wrongCells.first);
+
+      expect(
+        boardOf(tester).marks.where((m) => m == CellMark.mine).length,
+        1,
+        reason: 'relaxed mode lets you be wrong',
+      );
+      expect(find.text('BOARD'), findsOneWidget);
+    });
+  });
+
   group('progress', () {
     test('a win unlocks the next level and stores the best time', () async {
       expect(appState.progress.highestUnlockedLevel, 1);

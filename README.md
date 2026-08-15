@@ -135,9 +135,28 @@ rather than chosen by eye. The other four get per-region **patterns** switched o
 automatically, which carry what colour cannot. Patterns can be forced on or off
 in Look and feel.
 
+## Hard mode
+
+Off by default, a switch in settings. A mine that cannot be part of the solution
+is **refused** rather than placed, and costs one of three mistakes. Spend all
+three and the board detonates.
+
+Refusing rather than allowing is deliberate: the mine is known to be wrong, and
+leaving a wrong mine on the board while the game says "mistake" reads as a bug.
+Marking a cell clear is never punished, only placing a mine.
+
+Counting a legal-but-not-in-the-solution mine as a mistake is fair here in a way
+it would not be in a guessing game: every board has exactly one solution and can
+be reached by logic alone, so a mine anywhere else is an avoidable error rather
+than bad luck.
+
+Hard mode also has **no hints**. Limited mistakes mean little when the answer is
+a button press away.
+
 ## What is built
 
 - A title screen whose mark animates in, over a board that solves itself.
+- Relaxed and hard modes.
 - Five themes, plus accessibility patterns.
 - Endless campaign, 5x5 up to 9x9, unlocking as you go, with best times.
 - A daily puzzle keyed to the date, identical for everyone.

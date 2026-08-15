@@ -6,6 +6,7 @@
 library;
 
 export 'src/board.dart';
+export 'src/game_mode.dart';
 export 'src/generator.dart';
 export 'src/hints.dart';
 export 'src/levels.dart';

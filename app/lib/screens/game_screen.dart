@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../state/game_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/board_view.dart';
+import '../widgets/detonation.dart';
 
 /// Plays one board.
 class GameScreen extends StatefulWidget {
@@ -126,6 +127,54 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Centres of the real mines, as fractions of the board, so the blast comes
+  /// from where the mines actually were.
+  List<Offset> _blastOrigins(GameController controller) {
+    final puzzle = controller.board!.puzzle;
+    final n = puzzle.size;
+    return [
+      for (final cell in puzzle.solutionCells)
+        Offset((cell % n + 0.5) / n, (cell ~/ n + 0.5) / n),
+    ];
+  }
+
+  String _statusLine(GameController controller) {
+    if (controller.hasLost) return 'The board went up. Three mistakes is all.';
+    if (controller.rejectedCell != null) {
+      final left = controller.livesLeft;
+      return left == 1
+          ? 'No mine can go there. One mistake left.'
+          : 'No mine can go there. $left mistakes left.';
+    }
+    if (controller.hint != null) return controller.hint!.message;
+    if (controller.conflictCells.isNotEmpty) return 'Those mines break a rule.';
+    return '';
+  }
+
+  bool _statusIsWarning(GameController controller) =>
+      controller.hasLost ||
+      controller.rejectedCell != null ||
+      (controller.conflictCells.isNotEmpty && controller.hint == null);
+
+  Future<void> _showLossSheet() async {
+    if (!mounted) return;
+    final controller = _controller!;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      showDragHandle: true,
+      builder: (context) => _LossSheet(spec: widget.spec),
+    );
+    if (!mounted) return;
+
+    if (action == 'retry') {
+      controller.retry();
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
@@ -179,15 +228,25 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         showTimer: appState.settings.showTimer,
                       ),
                       const SizedBox(height: 16),
-                      BoardView(
-                        board: controller.board!,
-                        theme: appState.gameTheme,
-                        showPatterns: appState.showPatterns,
-                        conflictCells: controller.conflictCells,
-                        hintCell: controller.hint?.cell,
-                        relatedCells: controller.hint?.relatedCells ?? const [],
-                        onTapCell: controller.tapCell,
-                        onLongPressCell: controller.placeMine,
+                      Detonation(
+                        active: controller.hasLost,
+                        origins: _blastOrigins(controller),
+                        onComplete: _showLossSheet,
+                        child: BoardView(
+                          board: controller.board!,
+                          theme: appState.gameTheme,
+                          showPatterns: appState.showPatterns,
+                          conflictCells: {
+                            ...controller.conflictCells,
+                            if (controller.rejectedCell != null)
+                              controller.rejectedCell!,
+                          },
+                          hintCell: controller.hint?.cell,
+                          relatedCells:
+                              controller.hint?.relatedCells ?? const [],
+                          onTapCell: controller.tapCell,
+                          onLongPressCell: controller.placeMine,
+                        ),
                       ),
                       const SizedBox(height: 14),
                       // Minimum, not fixed: explanations run to a few lines and
@@ -196,14 +255,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         constraints: const BoxConstraints(minHeight: 52),
                         child: Center(
                           child: Text(
-                            controller.hint?.message ??
-                                (controller.conflictCells.isNotEmpty
-                                    ? 'Those mines break a rule.'
-                                    : ''),
+                            _statusLine(controller),
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: controller.conflictCells.isNotEmpty &&
-                                      controller.hint == null
+                              color: _statusIsWarning(controller)
                                   ? AppTheme.conflict
                                   : theme.colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w500,
@@ -253,10 +308,18 @@ class _Readouts extends StatelessWidget {
         ],
         const SizedBox(width: 10),
         Expanded(
-          child: _Readout(
-            label: 'Board',
-            value: '${controller.spec.size}x${controller.spec.size}',
-          ),
+          // In hard mode the lives matter more than the board size, and there
+          // is only room for three tiles on a narrow phone.
+          child: controller.mode.isHard
+              ? _Readout(
+                  label: 'Mistakes left',
+                  value: '${controller.livesLeft}',
+                  alarm: controller.livesLeft <= 1,
+                )
+              : _Readout(
+                  label: 'Board',
+                  value: '${controller.spec.size}x${controller.spec.size}',
+                ),
         ),
       ],
     );
@@ -268,11 +331,15 @@ class _Readout extends StatelessWidget {
     required this.label,
     required this.value,
     this.highlight = false,
+    this.alarm = false,
   });
 
   final String label;
   final String value;
   final bool highlight;
+
+  /// Draws the value in the warning colour, for a life count running out.
+  final bool alarm;
 
   @override
   Widget build(BuildContext context) {
@@ -299,7 +366,9 @@ class _Readout extends StatelessWidget {
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w700,
               fontFeatures: const [FontFeature.tabularFigures()],
-              color: highlight ? AppTheme.hintGlow : null,
+              color: highlight
+                  ? AppTheme.hintGlow
+                  : (alarm ? AppTheme.conflict : null),
             ),
           ),
         ],
@@ -336,9 +405,15 @@ class _Controls extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: _ActionButton(
-            icon: Icons.lightbulb_outline_rounded,
+            icon: controller.hintsAllowed
+                ? Icons.lightbulb_outline_rounded
+                : Icons.lightbulb_outline,
             label: 'Hint',
-            onPressed: done ? null : controller.requestHint,
+            onPressed:
+                done || !controller.hintsAllowed ? null : controller.requestHint,
+            tooltip: controller.hintsAllowed
+                ? null
+                : 'Hard mode has no hints. That is the trade.',
           ),
         ),
         const SizedBox(width: 8),
@@ -359,14 +434,21 @@ class _ActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onPressed,
+    this.tooltip,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
+    final button = _button(context);
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+  }
+
+  Widget _button(BuildContext context) {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
@@ -403,7 +485,7 @@ class _WinSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -482,6 +564,56 @@ class _Stat extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+
+/// Shown once the board has finished exploding.
+class _LossSheet extends StatelessWidget {
+  const _LossSheet({required this.spec});
+
+  final LevelSpec spec;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.dangerous_rounded, size: 44, color: AppTheme.conflict),
+          const SizedBox(height: 10),
+          Text(
+            'Board destroyed',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Hard mode allows ${MistakeRules.lives} mistakes. '
+            'The board is the same one, so the logic that beats it has not '
+            'changed.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('retry'),
+            child: const Text('Try again'),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('home'),
+            child: const Text('Back to menu'),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -318,6 +318,23 @@ class _SettingsSheetState extends State<SettingsSheet> {
               },
             ),
             SwitchListTile(
+              value: appState.settings.gameMode.isHard,
+              secondary: const Icon(Icons.local_fire_department_outlined),
+              title: const Text('Hard mode'),
+              subtitle: const Text(
+                'A wrong mine is refused and costs one of '
+                '${MistakeRules.lives}. Run out and the board blows up. '
+                'No hints.',
+              ),
+              onChanged: (value) async {
+                await appState.settings.setGameMode(
+                  value ? GameMode.hard : GameMode.relaxed,
+                );
+                if (mounted) setState(() {});
+              },
+            ),
+            const Divider(height: 1),
+            SwitchListTile(
               value: appState.settings.showTimer,
               title: const Text('Show the timer'),
               subtitle: const Text('Your time is still recorded either way.'),
