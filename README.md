@@ -13,7 +13,20 @@ alone. You never have to guess.
 
 Built with Flutter, so one codebase covers iOS, Android and the web.
 
-## Try it without installing anything
+## Play it in a browser
+
+Every push deploys the web build to GitHub Pages:
+
+**https://kaze-no-tachi.github.io/minedoku/**
+
+Works on any phone, nothing to install. On Android, Chrome's "Add to Home
+screen" gives it an icon and a fullscreen launch, which is close enough to an
+installed app for testing.
+
+One-time setup on a fresh clone of this repo: Settings, Pages, set Source to
+"GitHub Actions".
+
+## Try the engine prototype
 
 `web-prototype/` builds a single self-contained HTML file that runs the real
 engine (the Dart code compiled to JavaScript) behind a small hand-written UI.
