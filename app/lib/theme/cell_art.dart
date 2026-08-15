@@ -195,6 +195,35 @@ abstract final class CellArt {
     }
   }
 
+  /// The "unsure" note.
+  ///
+  /// Drawn with a text painter rather than a hand-built path: a question mark
+  /// is a letterform, and the one in the app's own font will always look more
+  /// like a question mark than anything approximated with curves.
+  static void paintMaybe(
+    Canvas canvas,
+    Rect rect, {
+    required Color color,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: '?',
+        style: TextStyle(
+          color: color,
+          fontSize: rect.width * 0.56,
+          fontWeight: FontWeight.w800,
+          height: 1,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    painter.paint(
+      canvas,
+      rect.center - Offset(painter.width / 2, painter.height / 2),
+    );
+  }
+
   static void paintBlocked(
     Canvas canvas,
     Rect rect, {

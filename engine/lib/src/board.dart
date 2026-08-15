@@ -9,6 +9,12 @@ enum CellMark {
   /// "I know a mine cannot go here" (the X marker).
   blocked,
 
+  /// "I suspect this one, but I have not committed" (the question mark).
+  ///
+  /// Purely a note to the player. It never constrains anything and is not a
+  /// mine, so it costs nothing to leave one behind.
+  maybe,
+
   /// A placed mine.
   mine,
 }
@@ -93,11 +99,18 @@ class GameBoard {
     return [for (final cell in mineCells) if (!answer.contains(cell)) cell];
   }
 
-  /// Advances a cell: empty -> blocked -> mine -> empty.
+  /// Advances a cell through the note-taking marks: empty, ruled out, unsure,
+  /// and back to empty.
+  ///
+  /// Mines are deliberately not in this cycle. Putting one in meant the only
+  /// way out of an X was through "mine", and in hard mode that step costs a
+  /// life, so taking back your own mark could not be done without being
+  /// punished for it. Committing a mine is its own gesture now.
   void cycle(int index) {
     final next = switch (_marks[index]) {
       CellMark.empty => CellMark.blocked,
-      CellMark.blocked => CellMark.mine,
+      CellMark.blocked => CellMark.maybe,
+      CellMark.maybe => CellMark.empty,
       CellMark.mine => CellMark.empty,
     };
     setMark(index, next);
@@ -195,6 +208,7 @@ class GameBoard {
       .map((m) => switch (m) {
             CellMark.empty => '.',
             CellMark.blocked => 'x',
+            CellMark.maybe => '?',
             CellMark.mine => 'm',
           })
       .join();
@@ -209,6 +223,7 @@ class GameBoard {
     for (var i = 0; i < encoded.length; i++) {
       _marks[i] = switch (encoded[i]) {
         'x' => CellMark.blocked,
+        '?' => CellMark.maybe,
         'm' => CellMark.mine,
         _ => CellMark.empty,
       };

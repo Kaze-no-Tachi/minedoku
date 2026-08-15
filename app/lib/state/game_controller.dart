@@ -110,6 +110,12 @@ class GameController extends ChangeNotifier {
 
   Set<int> get conflictCells => _board?.conflictCells ?? const {};
 
+  /// True while the player has not yet put a mine down on this board.
+  ///
+  /// Holding to commit a mine is not something a player discovers by tapping,
+  /// so the status line offers it until they have done it once.
+  bool get needsControlHint => (_board?.minesPlaced ?? 0) == 0;
+
   String get formattedTime {
     final minutes = (_seconds ~/ 60).toString().padLeft(2, '0');
     final secs = (_seconds % 60).toString().padLeft(2, '0');
@@ -171,35 +177,40 @@ class GameController extends ChangeNotifier {
 
   // ------------------------------------------------------------------- moves
 
+  /// A tap: cycles the note-taking marks, empty, ruled out, unsure, empty.
+  ///
+  /// A tap can never place a mine and so can never cost a life. That is the
+  /// point: with mines in this cycle, the only way out of an X was through
+  /// "mine", and in hard mode that step is a mistake on any cell outside the
+  /// solution, so taking back your own mark could not be done without being
+  /// punished for it.
   void tapCell(int index) {
     final board = _board;
     if (board == null || isFinished) return;
     _hint = null;
     _clearRejection();
-    // Cycling empty -> blocked -> mine, so only the step onto a mine can be a
-    // mistake. Marking a cell clear is never punished, even when wrong.
-    final becomingMine = board.markAt(index) == CellMark.blocked;
-    if (becomingMine && _rejectPlacement(index)) return;
+
     final before = board.markAt(index);
     board.cycle(index);
-    final after = board.markAt(index);
-    _sounded(before, after);
-    _afterMove(placed: after == CellMark.mine);
+    _sounded(before, board.markAt(index));
+    _afterMove(placed: false);
   }
 
-  /// Long press puts a mine down directly, skipping the X step.
-  void placeMine(int index) {
+  /// A press and hold: puts a mine down, or takes one back.
+  ///
+  /// Removing a mine, or clearing a cell, is never a mistake. Only committing
+  /// a new one can cost a life.
+  void toggleMine(int index) {
     final board = _board;
     if (board == null || isFinished) return;
     _hint = null;
     _clearRejection();
-    final removing = board.markAt(index) == CellMark.mine;
-    if (!removing && _rejectPlacement(index)) return;
+
     final before = board.markAt(index);
-    board.setMark(
-      index,
-      removing ? CellMark.empty : CellMark.mine,
-    );
+    final removing = before == CellMark.mine;
+    if (!removing && _rejectPlacement(index)) return;
+
+    board.setMark(index, removing ? CellMark.empty : CellMark.mine);
     _sounded(before, board.markAt(index));
     _afterMove(placed: board.markAt(index) == CellMark.mine);
   }
@@ -213,7 +224,7 @@ class GameController extends ChangeNotifier {
       if (_combo > _bestCombo) _bestCombo = _combo;
     } else if (before == CellMark.mine) {
       _sound.play(Sfx.remove);
-    } else if (after == CellMark.blocked) {
+    } else if (after == CellMark.blocked || after == CellMark.maybe) {
       _sound.play(Sfx.mark);
     }
   }

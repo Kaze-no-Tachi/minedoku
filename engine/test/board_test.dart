@@ -32,15 +32,43 @@ void main() {
   });
 
   group('marks', () {
-    test('tapping cycles empty -> blocked -> mine -> empty', () {
+    test('tapping cycles empty -> ruled out -> unsure -> empty', () {
       final board = GameBoard(fixture(), autoBlock: false);
       expect(board.markAt(0), CellMark.empty);
       board.cycle(0);
       expect(board.markAt(0), CellMark.blocked);
       board.cycle(0);
-      expect(board.markAt(0), CellMark.mine);
+      expect(board.markAt(0), CellMark.maybe);
       board.cycle(0);
       expect(board.markAt(0), CellMark.empty);
+    });
+
+    test('the cycle never reaches a mine', () {
+      // Mines are committed with their own gesture. When they sat in this
+      // cycle, the only way out of an X was through "mine", which in hard mode
+      // costs a life: taking back your own mark could not be done without
+      // being punished for it.
+      final board = GameBoard(fixture(), autoBlock: false);
+      for (var i = 0; i < 12; i++) {
+        board.cycle(0);
+        expect(board.markAt(0), isNot(CellMark.mine));
+      }
+    });
+
+    test('a mine placed directly is cleared by one tap', () {
+      final board = GameBoard(fixture(), autoBlock: false);
+      board.setMark(0, CellMark.mine);
+      board.cycle(0);
+      expect(board.markAt(0), CellMark.empty);
+    });
+
+    test('an unsure mark is not a mine and constrains nothing', () {
+      final board = GameBoard(fixture(), autoBlock: false);
+      board.setMark(0, CellMark.maybe);
+      board.setMark(5, CellMark.maybe);
+      expect(board.minesPlaced, 0);
+      expect(board.violations, isEmpty);
+      expect(board.isSolved, isFalse);
     });
 
     test('mine counters track placements', () {
@@ -85,14 +113,23 @@ void main() {
       expect(board.marks, everyElement(CellMark.empty));
     });
 
-    test('cycling a mine back to empty clears its X marks', () {
+    test('one tap on a mine clears it and its X marks', () {
       final board = GameBoard(fixture(), autoBlock: true);
-      board.cycle(1); // blocked
-      board.cycle(1); // mine
+      board.setMark(1, CellMark.mine);
       expect(board.markAt(0), CellMark.blocked);
 
-      board.cycle(1); // empty again
+      board.cycle(1); // straight back to empty
       expect(board.marks, everyElement(CellMark.empty));
+    });
+
+    test('auto-marking leaves an unsure cell alone', () {
+      // The player put it there on purpose, so it is theirs, not the board's.
+      final board = GameBoard(fixture(), autoBlock: true);
+      board.setMark(0, CellMark.maybe); // same row and colour as (0,1)
+      board.setMark(1, CellMark.mine);
+
+      expect(board.markAt(0), CellMark.maybe,
+          reason: 'auto-marking must not overwrite a deliberate note');
     });
 
     test('removing one mine keeps the X marks of the other', () {
@@ -268,6 +305,7 @@ void main() {
       final board = GameBoard(fixture(), autoBlock: false);
       board.setMark(0, CellMark.mine);
       board.setMark(3, CellMark.blocked);
+      board.setMark(6, CellMark.maybe);
 
       final restored = GameBoard(fixture(), autoBlock: false)
         ..restoreMarks(board.encodeMarks());

@@ -193,6 +193,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
     if (controller.hint != null) return controller.hint!.message;
     if (controller.conflictCells.isNotEmpty) return 'Those mines break a rule.';
+    if (controller.needsControlHint) {
+      return 'Tap to take notes. Hold to place a mine.';
+    }
     return '';
   }
 
@@ -298,7 +301,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                           relatedCells:
                               controller.hint?.relatedCells ?? const [],
                           onTapCell: controller.tapCell,
-                          onLongPressCell: controller.placeMine,
+                          onLongPressCell: controller.toggleMine,
                         ),
                       ),
                       const SizedBox(height: 14),

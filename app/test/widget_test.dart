@@ -126,19 +126,57 @@ void main() {
       expect(find.text('5x5'), findsOneWidget);
     });
 
-    testWidgets('tapping a cell twice places a mine', (tester) async {
+    testWidgets('holding a cell places a mine', (tester) async {
+      final spec = Levels.forLevel(1);
+      await tester.pumpWidget(hostFor(GameScreen(spec: spec), appState));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.byType(GestureDetector).first);
+      await tester.pumpAndSettle();
+
+      // One mine down, so four remain on a 5x5 board.
+      expect(find.text('4'), findsWidgets);
+    });
+
+    testWidgets('tapping walks the notes and never lays a mine',
+        (tester) async {
       final spec = Levels.forLevel(1);
       await tester.pumpWidget(hostFor(GameScreen(spec: spec), appState));
       await tester.pumpAndSettle();
 
       final cell = find.byType(GestureDetector).first;
-      await tester.tap(cell);
-      await tester.pumpAndSettle();
-      await tester.tap(cell);
+      for (final expected in [
+        CellMark.blocked,
+        CellMark.maybe,
+        CellMark.empty,
+        CellMark.blocked,
+      ]) {
+        await tester.tap(cell);
+        await tester.pumpAndSettle();
+        expect(boardOf(tester).markAt(0), expected);
+      }
+      expect(find.text('5'), findsWidgets, reason: 'no mine was ever placed');
+    });
+
+    testWidgets('the controls are spelled out until the first mine lands',
+        (tester) async {
+      // Holding is not a gesture anyone finds by tapping.
+      final spec = Levels.forLevel(1);
+      await tester.pumpWidget(hostFor(GameScreen(spec: spec), appState));
       await tester.pumpAndSettle();
 
-      // One mine down, so four remain on a 5x5 board.
-      expect(find.text('4'), findsWidgets);
+      const line = 'Tap to take notes. Hold to place a mine.';
+      expect(find.text(line), findsOneWidget);
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pumpAndSettle();
+      expect(find.text(line), findsOneWidget,
+          reason: 'notes are not the gesture being taught');
+
+      await tester.longPress(find.byType(GestureDetector).at(2));
+      await tester.pumpAndSettle();
+      expect(find.text(line), findsNothing,
+          reason: 'the player has done it, so stop saying it');
     });
 
     testWidgets('removing a mine clears the marks it caused', (tester) async {
@@ -147,15 +185,14 @@ void main() {
       await tester.pumpAndSettle();
 
       final cell = find.byType(GestureDetector).first;
-      await tester.tap(cell); // X
-      await tester.pumpAndSettle();
-      await tester.tap(cell); // mine, which auto-marks the cells it rules out
+      // A mine, which auto-marks the cells it rules out.
+      await tester.longPress(cell);
       await tester.pumpAndSettle();
 
       expect(blockedCells(tester), greaterThan(0),
           reason: 'placing a mine should X out the cells it rules out');
 
-      await tester.tap(cell); // back to empty
+      await tester.longPress(cell); // back to empty
       await tester.pumpAndSettle();
 
       expect(blockedCells(tester), 0,
@@ -196,8 +233,10 @@ void main() {
       await tester.tap(find.text('Hint'));
       await tester.pumpAndSettle();
 
-      // No static label on this screen contains a full stop, so finding one
-      // means the engine's explanation was rendered.
+      // The explanation replaces the standing control hint, so the hint line
+      // going away is itself evidence the engine's wording was rendered.
+      expect(find.text('Tap to take notes. Hold to place a mine.'),
+          findsNothing);
       expect(find.textContaining('.'), findsWidgets);
     });
 
@@ -241,11 +280,9 @@ void main() {
       await appState.settings.setGameMode(GameMode.hard);
     });
 
-    /// Two taps: empty to ruled-out, then an attempt to place a mine.
+    /// Commits a mine, the one move that can be wrong.
     Future<void> tryMine(WidgetTester tester, int cell) async {
-      await tester.tap(cellAt(cell));
-      await tester.pumpAndSettle();
-      await tester.tap(cellAt(cell));
+      await tester.longPress(cellAt(cell));
       await tester.pumpAndSettle();
     }
 
@@ -320,6 +357,49 @@ void main() {
       expect(find.text('Board destroyed'), findsNothing);
       expect(find.text('${MistakeRules.lives}'), findsWidgets);
       expect(boardOf(tester).marks, everyElement(CellMark.empty));
+    });
+
+    testWidgets('an X can be cleared without spending a life', (tester) async {
+      // Reported bug: the tap cycle ran empty -> X -> mine -> empty, so the
+      // only way out of an X was through "mine", and in hard mode that step
+      // costs a life on any cell that is not a solution cell. Clearing your
+      // own mark should never be punished, so the mine left the cycle.
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      final wrong = wrongCells.first;
+      for (final expected in [
+        CellMark.blocked,
+        CellMark.maybe,
+        CellMark.empty,
+      ]) {
+        await tester.tap(cellAt(wrong));
+        await tester.pumpAndSettle();
+        expect(boardOf(tester).markAt(wrong), expected);
+      }
+
+      expect(find.text('${MistakeRules.lives}'), findsWidgets,
+          reason: 'note-taking must not cost a life');
+    });
+
+    testWidgets('a mine is placed by holding, and removed the same way',
+        (tester) async {
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      final right = puzzle.solutionCells.first;
+      await tester.longPress(cellAt(right));
+      await tester.pumpAndSettle();
+      expect(boardOf(tester).markAt(right), CellMark.mine);
+
+      await tester.longPress(cellAt(right));
+      await tester.pumpAndSettle();
+      expect(boardOf(tester).markAt(right), CellMark.empty,
+          reason: 'holding a mine takes it back');
+      expect(find.text('${MistakeRules.lives}'), findsWidgets,
+          reason: 'removing your own mine is not a mistake');
     });
 
     testWidgets('hints are unavailable', (tester) async {

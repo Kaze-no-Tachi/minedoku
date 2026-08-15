@@ -381,7 +381,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               subtitle: const Text(
                 'A wrong mine is refused and costs one of '
                 '${MistakeRules.lives}. Run out and the board blows up. '
-                'No hints.',
+                'No hints. Notes are still free.',
               ),
               onChanged: (value) async {
                 await appState.settings.setGameMode(

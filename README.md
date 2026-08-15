@@ -13,6 +13,18 @@ alone. You never have to guess.
 
 Built with Flutter, so one codebase covers iOS, Android and the web.
 
+## Controls
+
+**Tap** cycles a cell through the note-taking marks: ruled out (X), unsure (?),
+then empty again. **Press and hold** commits a mine, and holding again takes it
+back.
+
+Notes and mines are separate gestures on purpose. Mines used to sit in the tap
+cycle, which meant the only way out of an X was through "mine", and in hard mode
+that step costs a mistake on any cell outside the solution: taking back your own
+mark could not be done without being punished for it. Now the only move that can
+ever be wrong is the one that takes a deliberate press.
+
 ## Play it in a browser
 
 Every push deploys the web build to GitHub Pages:
@@ -222,7 +234,8 @@ three and the board detonates.
 
 Refusing rather than allowing is deliberate: the mine is known to be wrong, and
 leaving a wrong mine on the board while the game says "mistake" reads as a bug.
-Marking a cell clear is never punished, only placing a mine.
+Note-taking is never punished, and neither is removing a mine you placed. Only
+committing a new one can cost you.
 
 Counting a legal-but-not-in-the-solution mine as a mistake is fair here in a way
 it would not be in a guessing game: every board has exactly one solution and can

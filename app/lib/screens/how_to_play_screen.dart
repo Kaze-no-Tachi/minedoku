@@ -57,14 +57,17 @@ class HowToPlayScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 const _Step(
                   icon: Icons.touch_app_outlined,
-                  title: 'Tap to cycle',
-                  body: 'Once marks a cell clear (X), twice places a mine, '
-                      'a third time empties it again.',
+                  title: 'Tap to take notes',
+                  body: 'Once marks a cell as clear (X), twice marks it as a '
+                      'maybe (?), a third time empties it. Notes are free and '
+                      'never count against you.',
                 ),
                 const _Step(
                   icon: Icons.pan_tool_outlined,
-                  title: 'Hold to place',
-                  body: 'Press and hold a cell to drop a mine straight away.',
+                  title: 'Hold to commit a mine',
+                  body: 'Press and hold to place a mine, and hold again to '
+                      'take it back. A mine is the only move that can be '
+                      'wrong, so it takes a deliberate press.',
                 ),
                 const _Step(
                   icon: Icons.lightbulb_outline_rounded,

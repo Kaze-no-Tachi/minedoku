@@ -119,6 +119,7 @@ class BoardView extends StatelessWidget {
   static String _describe(CellMark mark) => switch (mark) {
         CellMark.empty => 'empty',
         CellMark.blocked => 'ruled out',
+        CellMark.maybe => 'unsure',
         CellMark.mine => 'mine placed',
       };
 
@@ -181,7 +182,14 @@ class _BoardPainter extends CustomPainter {
       }
 
       final mark = board.markAt(i);
-      if (mark == CellMark.blocked) {
+      if (mark == CellMark.maybe) {
+        // No wash: an unsure cell is undecided, not ruled out.
+        CellArt.paintMaybe(
+          canvas,
+          rect,
+          color: theme.glyphColor.withValues(alpha: 0.75),
+        );
+      } else if (mark == CellMark.blocked) {
         canvas.drawRect(rect, Paint()..color = blockedWash);
         CellArt.paintBlocked(
           canvas,
