@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minedoku/screens/game_screen.dart';
-import 'package:minedoku/screens/home_screen.dart';
+import 'package:minedoku/screens/title_screen.dart';
 import 'package:minedoku/state/app_state.dart';
 import 'package:minedoku/widgets/board_view.dart';
 import 'package:minedoku/theme/app_theme.dart';
@@ -36,29 +36,74 @@ void main() {
     appState = await AppState.load();
   });
 
-  group('home screen', () {
-    testWidgets('shows the title, the rules and the entry points',
+  group('title screen', () {
+    // The ambient board loops forever by design, so this screen never settles.
+    // Tests pump fixed durations instead of using pumpAndSettle.
+    Future<void> showTitle(WidgetTester tester) async {
+      await tester.pumpWidget(hostFor(const TitleScreen(), appState));
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    testWidgets('shows the mark, the rules and the entry points',
         (tester) async {
-      await tester.pumpWidget(hostFor(const HomeScreen(), appState));
+      await showTitle(tester);
 
       expect(find.text('MINEDOKU'), findsOneWidget);
+      expect(
+        find.textContaining('One mine per row, column and colour'),
+        findsOneWidget,
+      );
       expect(find.text('Play level 1'), findsOneWidget);
       expect(find.text('Daily puzzle'), findsOneWidget);
       expect(find.text('All levels'), findsOneWidget);
-      for (final rule in MinedokuRules.summaries) {
-        expect(find.text(rule), findsOneWidget);
-      }
     });
 
     testWidgets('offers Continue only when a game was saved', (tester) async {
-      await tester.pumpWidget(hostFor(const HomeScreen(), appState));
+      await showTitle(tester);
       expect(find.textContaining('Continue level'), findsNothing);
 
       await appState.progress.saveGame(level: 3, marks: '.' * 36, seconds: 12);
-      await tester.pumpWidget(hostFor(const HomeScreen(), appState));
-      await tester.pump();
+      await tester.pumpWidget(hostFor(const TitleScreen(), appState));
+      await tester.pump(const Duration(seconds: 1));
 
       expect(find.text('Continue level 3'), findsOneWidget);
+    });
+
+    testWidgets('the intro plays once and is skipped afterwards',
+        (tester) async {
+      expect(appState.settings.hasSeenIntro, isFalse);
+
+      await tester.pumpWidget(hostFor(const TitleScreen(), appState));
+      await tester.pump();
+      // Mid-intro the menu is still fading in.
+      final fading = tester
+          .widgetList<FadeTransition>(find.byType(FadeTransition))
+          .any((w) => w.opacity.value < 1);
+      expect(fading, isTrue, reason: 'the first launch should animate');
+      await tester.pump(const Duration(seconds: 1));
+      expect(appState.settings.hasSeenIntro, isTrue);
+
+      // A second launch starts fully shown.
+      await tester.pumpWidget(hostFor(const TitleScreen(), appState));
+      await tester.pump();
+      final menu = tester.widget<FadeTransition>(
+        find.ancestor(
+          of: find.text('Play level 1'),
+          matching: find.byType(FadeTransition),
+        ).first,
+      );
+      expect(menu.opacity.value, 1.0, reason: 'no intro on a repeat launch');
+    });
+
+    testWidgets('shows the daily streak once there is one', (tester) async {
+      await showTitle(tester);
+      expect(find.text('Daily puzzle'), findsOneWidget);
+
+      await appState.stats.recordDailyWin();
+      await tester.pumpWidget(hostFor(const TitleScreen(), appState));
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.textContaining('1 day streak'), findsOneWidget);
     });
   });
 

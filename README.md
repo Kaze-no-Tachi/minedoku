@@ -117,8 +117,28 @@ random number generator rather than using `dart:math`, because the sequence in
 `Random` is not guaranteed to be stable across Dart versions or platforms, and
 level 42 has to be the same board everywhere.
 
+## Themes
+
+Five looks, all playing the identical game: **Enamel** (flat colour, heavy ink),
+**Sweeper 95** (grey bevels and a little red flag), **Girlie Pop** (hearts,
+glossy, very pink), **Candy** (sweet-shop colours) and **High Contrast**.
+
+Accessibility is built into the theme system rather than bolted on. The central
+rule is "one mine per colour", which is unplayable if two colours look the same,
+and roughly one man in twelve cannot separate some pairs. So every palette is
+measured, not assumed: `app/lib/theme/color_vision.dart` simulates protanopia,
+deuteranopia and tritanopia and reports the closest pair in CIELAB. A test holds
+each theme to its own claim.
+
+Only High Contrast survives on colour alone, and its palette was found by search
+rather than chosen by eye. The other four get per-region **patterns** switched on
+automatically, which carry what colour cannot. Patterns can be forced on or off
+in Look and feel.
+
 ## What is built
 
+- A title screen whose mark animates in, over a board that solves itself.
+- Five themes, plus accessibility patterns.
 - Endless campaign, 5x5 up to 9x9, unlocking as you go, with best times.
 - A daily puzzle keyed to the date, identical for everyone.
 - Practice boards at any size.

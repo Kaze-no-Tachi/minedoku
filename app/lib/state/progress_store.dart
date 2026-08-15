@@ -115,20 +115,30 @@ class ProgressStore extends ChangeNotifier {
 
   int get savedSeconds => _prefs.getInt(_kSavedSeconds) ?? 0;
 
+  /// Stores a board in progress so closing the app does not lose it.
+  ///
+  /// Only a change of *which* level is saved notifies listeners. Autosave runs
+  /// on every move, and telling the whole app about each one would rebuild it
+  /// constantly; but the title screen has to learn when a resumable game
+  /// appears, or its Continue button never shows up.
   Future<void> saveGame({
     required int level,
     required String marks,
     required int seconds,
   }) async {
+    final changed = savedLevel != level;
     await _prefs.setInt(_kSavedLevel, level);
     await _prefs.setString(_kSavedMarks, marks);
     await _prefs.setInt(_kSavedSeconds, seconds);
+    if (changed) notifyListeners();
   }
 
   Future<void> clearSavedGame() async {
+    final had = savedLevel != null;
     await _prefs.remove(_kSavedLevel);
     await _prefs.remove(_kSavedMarks);
     await _prefs.remove(_kSavedSeconds);
+    if (had) notifyListeners();
   }
 
   /// Wipes campaign progress. Settings and lifetime stats are untouched.

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/home_screen.dart';
+import 'screens/title_screen.dart';
 import 'state/app_state.dart';
 import 'theme/app_theme.dart';
 
@@ -32,7 +32,7 @@ class MinedokuApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             theme: AppTheme.build(game, Brightness.light),
             darkTheme: AppTheme.build(game, Brightness.dark),
-            home: const HomeScreen(),
+            home: const TitleScreen(),
           );
         },
       ),
