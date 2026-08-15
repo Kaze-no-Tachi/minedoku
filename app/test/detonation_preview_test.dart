@@ -1,5 +1,8 @@
 // Renders the blast at several moments so the animation can be reviewed as a
 // contact sheet. Regenerate with --update-goldens.
+@Tags(['golden'])
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minedoku/theme/app_theme.dart';

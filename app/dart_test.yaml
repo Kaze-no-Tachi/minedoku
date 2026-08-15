@@ -1,0 +1,7 @@
+tags:
+  # Golden-image tests. They render through the local graphics stack, so the
+  # bytes differ between machines and they are excluded from CI rather than
+  # made into a flaky gate. Run them locally with:
+  #   flutter test --tags golden
+  golden:
+    description: Renders images for review; not portable across machines.

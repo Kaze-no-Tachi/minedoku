@@ -30,12 +30,15 @@ jobs:
           dart analyze --fatal-infos
           dart test
 
+      # Golden tests are excluded: they render through the local graphics stack
+      # and their bytes differ between machines, so they belong on a developer's
+      # screen rather than in a gate. Run them with `flutter test --tags golden`.
       - name: App analysis and tests
         working-directory: app
         run: |
           flutter pub get
           flutter analyze
-          flutter test
+          flutter test --exclude-tags golden
 
   android:
     name: Build Android APK
