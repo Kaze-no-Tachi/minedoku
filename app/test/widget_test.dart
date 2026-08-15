@@ -684,6 +684,23 @@ void main() {
       expect(appState.progress.savedLevel, isNull);
     });
 
+    test('reset hands back a genuine first run', () async {
+      // Resetting is what you do before giving the game to someone new, so it
+      // has to bring the tutorial back with it.
+      await appState.settings.setHasSeenIntro(true);
+      await appState.settings.setHasSeenTutorial(true);
+      await appState.settings.setThemeId('sweeper95');
+      await appState.settings.setSound(false);
+
+      await appState.resetProgress();
+
+      expect(appState.settings.hasSeenTutorial, isFalse);
+      expect(appState.settings.hasSeenIntro, isFalse);
+      expect(appState.settings.themeId, 'sweeper95',
+          reason: 'a real preference is not progress');
+      expect(appState.settings.sound, isFalse);
+    });
+
     test('settings default on and can be turned off', () async {
       expect(appState.settings.autoBlock, isTrue);
       await appState.settings.setAutoBlock(false);

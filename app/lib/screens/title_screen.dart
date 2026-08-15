@@ -466,7 +466,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
             ListTile(
               leading: const Icon(Icons.restart_alt_rounded),
               title: const Text('Reset progress'),
-              subtitle: const Text('Clears levels, best times and stats.'),
+              subtitle: const Text(
+                'Clears levels, best times and stats, and brings the tutorial '
+                'back.',
+              ),
               onTap: () => _confirmReset(context, appState),
             ),
             const SizedBox(height: 8),
@@ -482,8 +485,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Reset progress?'),
         content: const Text(
-          'Every unlocked level, best time and statistic is removed. Your '
-          'theme and other settings are kept. This cannot be undone.',
+          'Every unlocked level, best time and statistic is removed, and the '
+          'game starts you with the tutorial again. Your theme and other '
+          'settings are kept. This cannot be undone.',
         ),
         actions: [
           TextButton(

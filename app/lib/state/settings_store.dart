@@ -110,6 +110,18 @@ class SettingsStore extends ChangeNotifier {
 
   Future<void> setHasSeenTutorial(bool value) => _write(_kSeenTutorial, value);
 
+  /// Forgets that the intro and the tutorial have been seen.
+  ///
+  /// These two are first-run state wearing a settings key, not preferences, so
+  /// a progress reset takes them with it: resetting is what you do to hand the
+  /// game to someone new, and a "fresh start" that skips the tutorial is not a
+  /// fresh start. Real preferences (theme, sound, patterns, mode) are kept.
+  Future<void> forgetFirstRun() async {
+    await _prefs.remove(_kSeenIntro);
+    await _prefs.remove(_kSeenTutorial);
+    notifyListeners();
+  }
+
   Future<void> _write(String key, Object value) async {
     switch (value) {
       case final bool v:

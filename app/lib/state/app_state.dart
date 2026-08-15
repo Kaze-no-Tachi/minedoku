@@ -41,13 +41,17 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// Clears campaign progress and lifetime stats, keeping player settings.
+  /// Clears campaign progress, lifetime stats and first-run state.
   ///
-  /// Settings survive on purpose: someone resetting their progress wants a
-  /// fresh run, not their theme and accessibility choices thrown away.
+  /// Preferences survive on purpose: someone resetting their progress wants a
+  /// fresh run, not their theme and accessibility choices thrown away. Having
+  /// seen the intro and the tutorial is not a preference though, it is first-run
+  /// state, and a reset is exactly what you reach for when handing the game to
+  /// somebody new, so those two go.
   Future<void> resetProgress() async {
     await progress.reset();
     await stats.reset();
+    await settings.forgetFirstRun();
   }
 
   @override
