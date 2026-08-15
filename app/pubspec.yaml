@@ -1,0 +1,25 @@
+name: minedoku
+description: "Minedoku - a grid logic puzzle: one mine per row, column and colour, and none may touch."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # The puzzle rules, solver, generator and hints. Pure Dart, no Flutter, so it
+  # can be unit-tested on its own with `dart test`.
+  minedoku_engine:
+    path: ../engine
+  # Saves progress and settings on the device. The only third-party package.
+  shared_preferences: ^2.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

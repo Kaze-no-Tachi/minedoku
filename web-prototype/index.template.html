@@ -1,0 +1,824 @@
+<title>Minedoku</title>
+<style>
+  /* ---------------------------------------------------------------- tokens */
+  :root {
+    color-scheme: light dark;
+
+    --ground: #F7F5FA;
+    --panel: #FFFFFF;
+    --panel-edge: #E2DEEC;
+    --ink: #221E30;
+    --ink-soft: #605977;
+    --ink-faint: #938CAB;
+    --accent: #6D3BF0;
+    --accent-soft: #EDE6FF;
+    --conflict: #D92846;
+    --solved: #0F9E72;
+    --grid-line: rgba(34, 30, 48, 0.14);
+    --grid-edge: #221E30;
+    --cell-ink: #241E33;
+    --blocked-wash: rgba(255, 255, 255, 0.5);
+
+    --r1: #B39DFF;
+    --r2: #FF6FA5;
+    --r3: #FFB8E0;
+    --r4: #4FD1FF;
+    --r5: #E8863C;
+    --r6: #FFC49B;
+    --r7: #A8E063;
+    --r8: #FFC93C;
+    --r9: #57E0C8;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono",
+      "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #14121F;
+      --panel: #1E1B2E;
+      --panel-edge: #302A45;
+      --ink: #F0EDF7;
+      --ink-soft: #A9A2C0;
+      --ink-faint: #6F6889;
+      --accent: #A88BFF;
+      --accent-soft: #2A2340;
+      --conflict: #FF4D6D;
+      --solved: #2BD9A0;
+      --grid-line: rgba(255, 255, 255, 0.2);
+      --grid-edge: #0B0912;
+      --blocked-wash: rgba(10, 8, 18, 0.42);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #14121F;
+    --panel: #1E1B2E;
+    --panel-edge: #302A45;
+    --ink: #F0EDF7;
+    --ink-soft: #A9A2C0;
+    --ink-faint: #6F6889;
+    --accent: #A88BFF;
+    --accent-soft: #2A2340;
+    --conflict: #FF4D6D;
+    --solved: #2BD9A0;
+    --grid-line: rgba(255, 255, 255, 0.2);
+    --grid-edge: #0B0912;
+    --blocked-wash: rgba(10, 8, 18, 0.42);
+  }
+
+  /* ----------------------------------------------------------------- shell */
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .wrap {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  /* ------------------------------------------------------------ masthead */
+  header { display: flex; flex-direction: column; gap: 6px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  h1 {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: clamp(30px, 9vw, 42px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+
+  h1 .dot { color: var(--accent); }
+
+  /* ---------------------------------------------------------- instruments */
+  .readouts {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--panel-edge);
+    border: 1px solid var(--panel-edge);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .readout {
+    background: var(--panel);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .readout dt {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .readout dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .readout dd.alert { color: var(--conflict); }
+  .readout dd.good { color: var(--solved); }
+
+  /* --------------------------------------------------------------- board */
+  .board-frame {
+    position: relative;
+    border: 3px solid var(--grid-edge);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--grid-edge);
+    box-shadow: 0 8px 28px rgba(10, 8, 20, 0.22);
+  }
+
+  .board {
+    display: grid;
+    aspect-ratio: 1;
+    width: 100%;
+  }
+
+  .cell {
+    position: relative;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    appearance: none;
+    background: var(--fill);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    border-top: var(--bt-w) solid var(--bt-c);
+    border-left: var(--bl-w) solid var(--bl-c);
+    transition: filter 120ms ease;
+    touch-action: manipulation;
+  }
+
+  .cell:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+    z-index: 4;
+  }
+
+  .cell.blocked::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--blocked-wash);
+  }
+
+  .cell .glyph {
+    position: relative;
+    z-index: 2;
+    width: 62%;
+    height: 62%;
+    display: block;
+  }
+
+  .cell.pop .glyph { animation: pop 220ms ease-out; }
+
+  @keyframes pop {
+    0% { transform: scale(0.3); opacity: 0; }
+    60% { transform: scale(1.14); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+
+  .cell.conflict { z-index: 3; }
+
+  .cell.conflict::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border: 3px solid var(--conflict);
+    border-radius: 4px;
+    z-index: 3;
+    animation: throb 900ms ease-in-out infinite;
+  }
+
+  @keyframes throb {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .cell.hinted::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border: 3px dashed var(--solved);
+    border-radius: 4px;
+    z-index: 3;
+  }
+
+  /* ------------------------------------------------------------ controls */
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  button.action {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 13px 4px;
+    border-radius: 11px;
+    border: 1px solid var(--panel-edge);
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+    transition: transform 90ms ease, border-color 120ms ease;
+  }
+
+  button.action:active:not(:disabled) { transform: translateY(2px); }
+  button.action:hover:not(:disabled) { border-color: var(--accent); }
+  button.action:disabled { opacity: 0.38; cursor: default; }
+  button.action:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .sizes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .sizes .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-right: 2px;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-edge);
+    background: var(--panel);
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+
+  .chip[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #FFFFFF;
+  }
+
+  .chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* --------------------------------------------------------------- notes */
+  .message {
+    min-height: 22px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+
+  .message.win { color: var(--solved); font-weight: 700; }
+  .message.warn { color: var(--conflict); }
+
+  details.rules {
+    border: 1px solid var(--panel-edge);
+    border-radius: 12px;
+    background: var(--panel);
+    padding: 0 14px;
+  }
+
+  details.rules summary {
+    cursor: pointer;
+    padding: 13px 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  details.rules summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  details.rules ol {
+    margin: 0 0 14px;
+    padding-left: 20px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    max-width: 60ch;
+  }
+
+  details.rules p {
+    margin: 0 0 14px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ink-faint);
+    max-width: 60ch;
+  }
+
+  footer {
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Playable prototype</span>
+    <h1>Minedoku<span class="dot">.</span></h1>
+  </header>
+
+  <dl class="readouts">
+    <div class="readout">
+      <dt>Mines left</dt>
+      <dd id="readout-mines">0</dd>
+    </div>
+    <div class="readout">
+      <dt>Time</dt>
+      <dd id="readout-time">00:00</dd>
+    </div>
+    <div class="readout">
+      <dt>Board</dt>
+      <dd id="readout-size">7&times;7</dd>
+    </div>
+  </dl>
+
+  <div class="board-frame">
+    <div class="board" id="board" role="grid" aria-label="Minedoku board"></div>
+  </div>
+
+  <p class="message" id="message" role="status" aria-live="polite"></p>
+
+  <div class="controls">
+    <button class="action" id="btn-undo" type="button">Undo</button>
+    <button class="action" id="btn-hint" type="button">Hint</button>
+    <button class="action" id="btn-clear" type="button">Clear</button>
+    <button class="action" id="btn-new" type="button">New</button>
+  </div>
+
+  <div class="sizes" id="sizes">
+    <span class="label">Size</span>
+  </div>
+
+  <details class="rules">
+    <summary>How to play</summary>
+    <ol>
+      <li>Exactly one mine in every row.</li>
+      <li>Exactly one mine in every column.</li>
+      <li>Exactly one mine in every colour.</li>
+      <li>No two mines may touch, not even at a corner.</li>
+    </ol>
+    <p>
+      Tap a cell once to mark it as clear (X), twice to place a mine, three
+      times to empty it. Press and hold to drop a mine straight away. Placing a
+      mine automatically X's out everything it rules out.
+    </p>
+    <p>Every board has exactly one solution, so you never have to guess.</p>
+  </details>
+
+  <footer>
+    Rules, generator and hints run on the same Dart engine as the Flutter app,
+    compiled to JavaScript.
+  </footer>
+</div>
+
+<script>/*__ENGINE__*/</script>
+<script>
+(function () {
+  "use strict";
+
+  var REGION_VARS = ["--r1", "--r2", "--r3", "--r4", "--r5",
+                     "--r6", "--r7", "--r8", "--r9"];
+  var EMPTY = ".", BLOCKED = "x", MINE = "m";
+  var SIZES = [5, 6, 7, 8, 9];
+
+  var state = {
+    size: 7,
+    seed: 1,
+    regions: [],
+    solution: [],
+    marks: [],
+    history: [],
+    seconds: 0,
+    running: false,
+    won: false,
+    hintCell: null,
+    lastPlaced: null
+  };
+
+  var els = {
+    board: document.getElementById("board"),
+    mines: document.getElementById("readout-mines"),
+    time: document.getElementById("readout-time"),
+    size: document.getElementById("readout-size"),
+    message: document.getElementById("message"),
+    undo: document.getElementById("btn-undo"),
+    hint: document.getElementById("btn-hint"),
+    clear: document.getElementById("btn-clear"),
+    newGame: document.getElementById("btn-new"),
+    sizes: document.getElementById("sizes")
+  };
+
+  // ------------------------------------------------------------ rule checks
+  function touching(size, a, b) {
+    if (a === b) return false;
+    var dr = Math.abs(Math.floor(a / size) - Math.floor(b / size));
+    var dc = Math.abs((a % size) - (b % size));
+    return dr <= 1 && dc <= 1;
+  }
+
+  function mineCells() {
+    var cells = [];
+    for (var i = 0; i < state.marks.length; i++) {
+      if (state.marks[i] === MINE) cells.push(i);
+    }
+    return cells;
+  }
+
+  function conflictSet() {
+    var mines = mineCells();
+    var bad = {};
+    for (var i = 0; i < mines.length; i++) {
+      for (var j = i + 1; j < mines.length; j++) {
+        var a = mines[i], b = mines[j], size = state.size;
+        var clash =
+          Math.floor(a / size) === Math.floor(b / size) ||
+          (a % size) === (b % size) ||
+          state.regions[a] === state.regions[b] ||
+          touching(size, a, b);
+        if (clash) { bad[a] = true; bad[b] = true; }
+      }
+    }
+    return bad;
+  }
+
+  function isSolved() {
+    return mineCells().length === state.size &&
+      Object.keys(conflictSet()).length === 0;
+  }
+
+  // -------------------------------------------------------------- gameplay
+  function pushHistory() {
+    state.history.push(state.marks.slice());
+    if (state.history.length > 300) state.history.shift();
+  }
+
+  function autoBlock(index) {
+    var size = state.size;
+    var row = Math.floor(index / size), col = index % size;
+    var region = state.regions[index];
+    for (var i = 0; i < state.marks.length; i++) {
+      if (i === index || state.marks[i] !== EMPTY) continue;
+      if (Math.floor(i / size) === row || (i % size) === col ||
+          state.regions[i] === region || touching(size, i, index)) {
+        state.marks[i] = BLOCKED;
+      }
+    }
+  }
+
+  function setMark(index, mark) {
+    if (state.won || state.marks[index] === mark) return;
+    pushHistory();
+    state.marks[index] = mark;
+    if (mark === MINE) {
+      autoBlock(index);
+      state.lastPlaced = index;
+    }
+    state.hintCell = null;
+    afterMove();
+  }
+
+  function cycle(index) {
+    var current = state.marks[index];
+    setMark(index, current === EMPTY ? BLOCKED
+                 : current === BLOCKED ? MINE : EMPTY);
+  }
+
+  function afterMove() {
+    if (!state.running && !state.won) startTimer();
+    if (isSolved()) {
+      state.won = true;
+      state.running = false;
+      say("Solved in " + formatTime(state.seconds) + ". Nicely done.", "win");
+    } else {
+      var conflicts = Object.keys(conflictSet()).length;
+      if (conflicts > 0) say("Those mines break a rule.", "warn");
+      else say("");
+    }
+    render();
+  }
+
+  function undo() {
+    if (state.won || !state.history.length) return;
+    state.marks = state.history.pop();
+    state.hintCell = null;
+    state.lastPlaced = null;
+    say("");
+    render();
+  }
+
+  function clearBoard() {
+    if (state.won) return;
+    pushHistory();
+    state.marks = state.marks.map(function () { return EMPTY; });
+    state.hintCell = null;
+    say("");
+    render();
+  }
+
+  function requestHint() {
+    if (state.won) return;
+    try {
+      var raw = window.minedokuHint(
+        state.size,
+        state.regions.join(","),
+        state.solution.join(","),
+        state.marks.join("")
+      );
+      var hint = JSON.parse(raw);
+      state.hintCell = typeof hint.cell === "number" ? hint.cell : null;
+      say(hint.message);
+    } catch (err) {
+      say("Hint unavailable.", "warn");
+    }
+    render();
+  }
+
+  // --------------------------------------------------------------- timing
+  var timerId = null;
+
+  function startTimer() {
+    state.running = true;
+    if (timerId) return;
+    timerId = setInterval(function () {
+      if (!state.running) return;
+      state.seconds++;
+      els.time.textContent = formatTime(state.seconds);
+    }, 1000);
+  }
+
+  function formatTime(total) {
+    var m = String(Math.floor(total / 60)).padStart(2, "0");
+    var s = String(total % 60).padStart(2, "0");
+    return m + ":" + s;
+  }
+
+  // ------------------------------------------------------------ rendering
+  function mineSvg() {
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "glyph");
+    svg.setAttribute("aria-hidden", "true");
+
+    var g = document.createElementNS(ns, "g");
+    g.setAttribute("stroke", "var(--cell-ink)");
+    g.setAttribute("stroke-width", "2.4");
+    g.setAttribute("stroke-linecap", "round");
+    for (var i = 0; i < 8; i++) {
+      var angle = i * Math.PI / 4;
+      var line = document.createElementNS(ns, "line");
+      line.setAttribute("x1", (12 + Math.cos(angle) * 5).toFixed(2));
+      line.setAttribute("y1", (12 + Math.sin(angle) * 5).toFixed(2));
+      line.setAttribute("x2", (12 + Math.cos(angle) * 10).toFixed(2));
+      line.setAttribute("y2", (12 + Math.sin(angle) * 10).toFixed(2));
+      g.appendChild(line);
+    }
+    svg.appendChild(g);
+
+    var body = document.createElementNS(ns, "circle");
+    body.setAttribute("cx", "12");
+    body.setAttribute("cy", "12");
+    body.setAttribute("r", "6.4");
+    body.setAttribute("fill", "var(--cell-ink)");
+    svg.appendChild(body);
+
+    var shine = document.createElementNS(ns, "circle");
+    shine.setAttribute("cx", "9.7");
+    shine.setAttribute("cy", "9.7");
+    shine.setAttribute("r", "1.5");
+    shine.setAttribute("fill", "rgba(255,255,255,0.78)");
+    svg.appendChild(shine);
+    return svg;
+  }
+
+  function crossSvg() {
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "glyph");
+    svg.setAttribute("aria-hidden", "true");
+    var path = document.createElementNS(ns, "path");
+    path.setAttribute("d", "M7 7 L17 17 M17 7 L7 17");
+    path.setAttribute("stroke", "var(--cell-ink)");
+    path.setAttribute("stroke-width", "2.8");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("opacity", "0.5");
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function buildBoard() {
+    var size = state.size;
+    els.board.style.gridTemplateColumns = "repeat(" + size + ", 1fr)";
+    els.board.textContent = "";
+
+    for (var i = 0; i < size * size; i++) {
+      var row = Math.floor(i / size), col = i % size;
+      var cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "cell";
+      cell.dataset.index = String(i);
+      cell.setAttribute("aria-label",
+        "Row " + (row + 1) + ", column " + (col + 1));
+      cell.style.setProperty("--fill",
+        "var(" + REGION_VARS[state.regions[i] % REGION_VARS.length] + ")");
+
+      // Each internal boundary is drawn once, from the cell below/right of it,
+      // so region outlines stay an even weight instead of doubling up.
+      var topDiffers = row > 0 && state.regions[i - size] !== state.regions[i];
+      var leftDiffers = col > 0 && state.regions[i - 1] !== state.regions[i];
+      cell.style.setProperty("--bt-w", row === 0 ? "0px" : (topDiffers ? "3px" : "1px"));
+      cell.style.setProperty("--bt-c", topDiffers ? "var(--grid-edge)" : "var(--grid-line)");
+      cell.style.setProperty("--bl-w", col === 0 ? "0px" : (leftDiffers ? "3px" : "1px"));
+      cell.style.setProperty("--bl-c", leftDiffers ? "var(--grid-edge)" : "var(--grid-line)");
+
+      attachCellHandlers(cell, i);
+      els.board.appendChild(cell);
+    }
+  }
+
+  function attachCellHandlers(cell, index) {
+    var holdTimer = null;
+    var heldDown = false;
+
+    cell.addEventListener("pointerdown", function () {
+      heldDown = false;
+      holdTimer = setTimeout(function () {
+        heldDown = true;
+        setMark(index, state.marks[index] === MINE ? EMPTY : MINE);
+        if (navigator.vibrate) navigator.vibrate(12);
+      }, 420);
+    });
+
+    function cancelHold() {
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    }
+
+    cell.addEventListener("pointerup", cancelHold);
+    cell.addEventListener("pointercancel", function () {
+      cancelHold();
+      heldDown = false;
+    });
+    cell.addEventListener("pointerleave", cancelHold);
+    cell.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+    cell.addEventListener("click", function () {
+      if (heldDown) { heldDown = false; return; }
+      cycle(index);
+    });
+  }
+
+  function render() {
+    var conflicts = conflictSet();
+    var cells = els.board.children;
+
+    for (var i = 0; i < cells.length; i++) {
+      var cell = cells[i];
+      var mark = state.marks[i];
+      var wasPopped = cell.classList.contains("pop");
+
+      cell.classList.toggle("blocked", mark === BLOCKED);
+      cell.classList.toggle("conflict", Boolean(conflicts[i]));
+      cell.classList.toggle("hinted", state.hintCell === i);
+
+      var glyph = cell.querySelector(".glyph");
+      if (glyph) cell.removeChild(glyph);
+      if (mark === MINE) cell.appendChild(mineSvg());
+      else if (mark === BLOCKED) cell.appendChild(crossSvg());
+
+      if (mark === MINE && state.lastPlaced === i && !wasPopped) {
+        cell.classList.add("pop");
+      } else if (mark !== MINE) {
+        cell.classList.remove("pop");
+      }
+    }
+
+    els.mines.textContent = String(state.size - mineCells().length);
+    els.mines.className = state.won ? "good" : "";
+    els.size.innerHTML = state.size + "&times;" + state.size;
+    els.time.textContent = formatTime(state.seconds);
+    els.undo.disabled = state.won || state.history.length === 0;
+    els.hint.disabled = state.won;
+    els.clear.disabled = state.won;
+  }
+
+  function say(text, tone) {
+    els.message.textContent = text;
+    els.message.className = "message" + (tone ? " " + tone : "");
+  }
+
+  // ----------------------------------------------------------------- setup
+  function newGame(size) {
+    state.size = size;
+    state.seed = Math.floor(Math.random() * 1000000) + 1;
+    state.seconds = 0;
+    state.running = false;
+    state.won = false;
+    state.history = [];
+    state.hintCell = null;
+    state.lastPlaced = null;
+
+    var data;
+    try {
+      data = JSON.parse(window.minedokuGenerate(size, state.seed));
+    } catch (err) {
+      say("Could not build a board. Reload the page.", "warn");
+      return;
+    }
+
+    state.regions = data.regions;
+    state.solution = data.solution;
+    state.marks = new Array(size * size).fill(EMPTY);
+
+    buildBoard();
+    say("");
+    render();
+    updateSizeChips();
+  }
+
+  function updateSizeChips() {
+    var chips = els.sizes.querySelectorAll(".chip");
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].setAttribute("aria-pressed",
+        String(Number(chips[i].dataset.size) === state.size));
+    }
+  }
+
+  function buildSizeChips() {
+    SIZES.forEach(function (size) {
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.dataset.size = String(size);
+      chip.textContent = size + "×" + size;
+      chip.setAttribute("aria-pressed", "false");
+      chip.addEventListener("click", function () { newGame(size); });
+      els.sizes.appendChild(chip);
+    });
+  }
+
+  els.undo.addEventListener("click", undo);
+  els.clear.addEventListener("click", clearBoard);
+  els.hint.addEventListener("click", requestHint);
+  els.newGame.addEventListener("click", function () { newGame(state.size); });
+
+  buildSizeChips();
+  newGame(7);
+})();
+</script>

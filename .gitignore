@@ -1,0 +1,32 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Engine package
+engine/.dart_tool/
+engine/build/
+
+# Generated prototype output (rebuild with web-prototype/build.sh)
+web-prototype/minedoku-prototype.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Android
+app/android/.gradle/
+app/android/local.properties
+app/android/key.properties
+*.jks
+
+# iOS
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/Flutter.framework
+app/ios/Flutter/Flutter.podspec
