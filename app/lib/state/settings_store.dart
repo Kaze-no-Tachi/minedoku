@@ -51,11 +51,17 @@ class SettingsStore extends ChangeNotifier {
 
   Future<void> setThemeId(String value) => _write(_kTheme, value);
 
+  /// Off unless the player asks for them.
+  ///
+  /// Patterns are the honest answer to colour blindness, but they are also the
+  /// first thing a new player sees, and a board of stripes and dots reads as
+  /// busy before it reads as helpful. High Contrast is safe on colour alone,
+  /// and Automatic remains one tap away in Look and feel.
   PatternMode get patternMode {
     final stored = _prefs.getString(_kPatterns);
     return PatternMode.values.firstWhere(
       (m) => m.name == stored,
-      orElse: () => PatternMode.auto,
+      orElse: () => PatternMode.never,
     );
   }
 

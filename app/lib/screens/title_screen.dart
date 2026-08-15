@@ -11,6 +11,7 @@ import 'gauntlet_screen.dart';
 import 'how_to_play_screen.dart';
 import 'levels_screen.dart';
 import 'theme_screen.dart';
+import 'tutorial_screen.dart';
 
 /// The front door: the mark animates in, then a board comes alive behind the
 /// menu and solves itself on a loop.
@@ -53,6 +54,19 @@ class _TitleScreenState extends State<TitleScreen>
     } else {
       _intro.forward();
       settings.setHasSeenIntro(true);
+    }
+
+    // A first-time player who lands on a grid of coloured squares has no way to
+    // know that holding places a mine, or what they are aiming for. Teaching is
+    // not something to leave behind a menu item, so the first launch opens the
+    // tutorial. It can be skipped, and it never appears again.
+    if (!settings.hasSeenTutorial) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const TutorialScreen()),
+        );
+      });
     }
   }
 
@@ -250,11 +264,19 @@ class _Menu extends StatelessWidget {
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () {
-            final spec = Levels.daily(DateTime.now());
+            final today = DateTime.now();
+            final spec = Levels.daily(today);
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) =>
-                    GameScreen(spec: spec, isCampaign: false, isDaily: true),
+                builder: (_) => GameScreen(
+                  spec: spec,
+                  isCampaign: false,
+                  isDaily: true,
+                  // There is only one daily a day, so a half-finished one is
+                  // picked up where it was left rather than started over.
+                  restoreMarks: appState.progress.savedDailyMarks(today),
+                  restoreSeconds: appState.progress.savedDailySeconds(today),
+                ),
               ),
             );
           },
@@ -334,10 +356,17 @@ class _Menu extends StatelessWidget {
         const SizedBox(height: 20),
         TextButton.icon(
           onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const TutorialScreen()),
+          ),
+          icon: const Icon(Icons.school_outlined),
+          label: const Text('Learn to play'),
+        ),
+        TextButton.icon(
+          onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) => const HowToPlayScreen()),
           ),
           icon: const Icon(Icons.help_outline_rounded),
-          label: const Text('How to play'),
+          label: const Text('The rules'),
         ),
       ],
     );

@@ -116,6 +116,10 @@ class GameController extends ChangeNotifier {
   /// so the status line offers it until they have done it once.
   bool get needsControlHint => (_board?.minesPlaced ?? 0) == 0;
 
+  /// True once there is work on the board worth not throwing away.
+  bool get hasProgress =>
+      _board?.marks.any((m) => m != CellMark.empty) ?? false;
+
   String get formattedTime {
     final minutes = (_seconds ~/ 60).toString().padLeft(2, '0');
     final secs = (_seconds % 60).toString().padLeft(2, '0');
@@ -352,6 +356,7 @@ class GameController extends ChangeNotifier {
     );
     if (isDaily) {
       await appState.stats.recordDailyWin();
+      await appState.progress.clearSavedDaily();
     }
     if (isCampaign) {
       await appState.progress.clearSavedGame();
@@ -374,12 +379,23 @@ class GameController extends ChangeNotifier {
       : 0;
 
   void _persist() {
-    if (!isCampaign || _board == null) return;
-    unawaited(appState.progress.saveGame(
-      level: spec.number,
-      marks: _board!.encodeMarks(),
-      seconds: _seconds,
-    ));
+    final board = _board;
+    if (board == null) return;
+    if (isCampaign) {
+      unawaited(appState.progress.saveGame(
+        level: spec.number,
+        marks: board.encodeMarks(),
+        seconds: _seconds,
+      ));
+    } else if (isDaily) {
+      // There is only one daily a day, so walking away from a half-finished
+      // one and losing it is a far worse outcome than on a campaign level.
+      unawaited(appState.progress.saveDaily(
+        day: DateTime.now(),
+        marks: board.encodeMarks(),
+        seconds: _seconds,
+      ));
+    }
   }
 
   void _buzz(Future<void> Function() effect) {

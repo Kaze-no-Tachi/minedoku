@@ -5,6 +5,7 @@ import 'package:minedoku/screens/gauntlet_screen.dart';
 import 'package:minedoku/screens/levels_screen.dart';
 import 'package:minedoku/widgets/star_row.dart';
 import 'package:minedoku/screens/title_screen.dart';
+import 'package:minedoku/screens/tutorial_screen.dart';
 import 'package:minedoku/audio/sound_service.dart';
 import 'package:minedoku/state/app_state.dart';
 import 'package:minedoku/widgets/board_view.dart';
@@ -38,6 +39,9 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     appState = await AppState.load();
+    // The first launch opens the tutorial over the title screen. That is its
+    // own group below; everywhere else it would just be in the way.
+    await appState.settings.setHasSeenTutorial(true);
     // No audio plugin under test, and the service would only swallow the
     // failures anyway. Silence keeps the output clean.
     SoundService.instance = SilentSoundService();
@@ -261,6 +265,66 @@ void main() {
     });
   });
 
+  group('leaving a board', () {
+    /// The system back gesture, which is what a stray thumb near the screen
+    /// edge sends. On the web the browser's back gesture arrives the same way.
+    Future<void> pressBack(WidgetTester tester) async {
+      final widgetsBinding = tester.binding;
+      await widgetsBinding.handlePopRoute();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an untouched board just closes', (tester) async {
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      await pressBack(tester);
+      expect(find.text('Leave this board?'), findsNothing);
+    });
+
+    testWidgets('a board with work on it asks first', (tester) async {
+      // Reported bug: a back swipe threw the board away without a word, and on
+      // the daily that is the only board of the day.
+      await tester.pumpWidget(
+          hostFor(GameScreen(spec: Levels.forLevel(1)), appState));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.byType(GestureDetector).first);
+      await tester.pumpAndSettle();
+
+      await pressBack(tester);
+      expect(find.text('Leave this board?'), findsOneWidget);
+
+      await tester.tap(find.text('Keep playing'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('MINES LEFT'), findsOneWidget,
+          reason: 'still on the board');
+      expect(boardOf(tester).minesPlaced, 1, reason: 'work is untouched');
+    });
+
+    testWidgets('the daily is saved, so it can be picked back up',
+        (tester) async {
+      final today = DateTime.now();
+      await tester.pumpWidget(hostFor(
+        GameScreen(spec: Levels.daily(today), isCampaign: false, isDaily: true),
+        appState,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.byType(GestureDetector).first);
+      await tester.pumpAndSettle();
+
+      final saved = appState.progress.savedDailyMarks(today);
+      expect(saved, isNotNull);
+      expect(saved, contains('m'), reason: 'the mine is in the save');
+      expect(appState.progress.savedDailyMarks(today.add(const Duration(days: 1))),
+          isNull,
+          reason: "yesterday's save must not restore onto today's board");
+    });
+  });
+
   group('hard mode', () {
     // Cell indices map to the GestureDetector grid in order, so tapping
     // `cellAt(i)` taps board cell i.
@@ -430,6 +494,98 @@ void main() {
         reason: 'relaxed mode lets you be wrong',
       );
       expect(find.text('BOARD'), findsOneWidget);
+    });
+  });
+
+  group('tutorial', () {
+    Finder cellAt(int index) => find.byType(GestureDetector).at(index);
+
+    Future<void> showTutorial(WidgetTester tester) async {
+      await tester.pumpWidget(hostFor(const TutorialScreen(), appState));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('opens by itself on a first launch, once', (tester) async {
+      // The title screen's ambient board loops forever, so this pumps fixed
+      // durations rather than settling.
+      await appState.settings.setHasSeenTutorial(false);
+      await tester.pumpWidget(hostFor(const TitleScreen(), appState));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.text('Learn to play'), findsWidgets);
+      expect(find.textContaining('Four mines'), findsOneWidget);
+
+      // Skipping counts as seen, so it does not ambush the player again.
+      await tester.tap(find.text('Skip'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(appState.settings.hasSeenTutorial, isTrue);
+
+      await tester.pumpWidget(hostFor(const TitleScreen(), appState));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.textContaining('Four mines'), findsNothing);
+    });
+
+    testWidgets('a step with a move has no Next button', (tester) async {
+      await showTutorial(tester);
+
+      // The first step is reading, so it may be clicked past.
+      expect(find.text('Next'), findsOneWidget);
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+
+      // The second asks for a mine, and the only way on is to place it.
+      expect(find.text('Hold to place a mine'), findsOneWidget);
+      expect(find.text('Next'), findsNothing);
+    });
+
+    testWidgets('the wrong cell nudges instead of advancing', (tester) async {
+      await showTutorial(tester);
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(cellAt(5)); // not the highlighted cell
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hold the highlighted cell.'), findsOneWidget);
+      expect(find.text('Hold to place a mine'), findsOneWidget,
+          reason: 'still on the same step');
+    });
+
+    testWidgets('playing the script through solves the board',
+        (tester) async {
+      await showTutorial(tester);
+
+      Future<void> next() async {
+        await tester.tap(find.text('Next'));
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> hold(int cell) async {
+        await tester.longPress(cellAt(cell));
+        await tester.pumpAndSettle();
+      }
+
+      await next(); // the rules
+      await hold(1); // first mine
+      await next(); // what it ruled out
+
+      // The note-taking step wants the full cycle: X, then ?, then clear.
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(cellAt(11));
+        await tester.pumpAndSettle();
+      }
+
+      await next(); // the row is down to one cell
+      await hold(7);
+      await next(); // colours work the same way
+      await hold(8);
+      await hold(14); // the last cell on the board
+
+      expect(find.text('That is the whole game'), findsOneWidget);
+      expect(boardOf(tester).isSolved, isTrue,
+          reason: 'the player solved it themselves, move by move');
     });
   });
 

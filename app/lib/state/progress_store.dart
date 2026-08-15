@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:minedoku_engine/minedoku_engine.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// How well a level was finished.
@@ -46,6 +47,9 @@ class ProgressStore extends ChangeNotifier {
   static const _kSavedLevel = 'saved_level';
   static const _kSavedMarks = 'saved_marks';
   static const _kSavedSeconds = 'saved_seconds';
+  static const _kDailyDay = 'daily_saved_day';
+  static const _kDailyMarks = 'daily_saved_marks';
+  static const _kDailySeconds = 'daily_saved_seconds';
 
   final SharedPreferences _prefs;
 
@@ -148,6 +152,44 @@ class ProgressStore extends ChangeNotifier {
     await _prefs.remove(_kSavedMarks);
     await _prefs.remove(_kSavedSeconds);
     if (had) notifyListeners();
+  }
+
+  // -------------------------------------------------------- saved daily board
+
+  /// The daily gets its own slot rather than sharing the campaign one.
+  ///
+  /// There is exactly one daily board a day, so leaving it half-finished and
+  /// losing the work is a much worse outcome than on a campaign level, which
+  /// can simply be opened again.
+
+  /// Marks for today's daily, or null when there is no usable save.
+  ///
+  /// A save from an earlier day is ignored: that board is gone, and restoring
+  /// its marks onto today's would be nonsense.
+  String? savedDailyMarks(DateTime day) =>
+      _prefs.getInt(_kDailyDay) == DayKey.of(day)
+          ? _prefs.getString(_kDailyMarks)
+          : null;
+
+  int savedDailySeconds(DateTime day) =>
+      _prefs.getInt(_kDailyDay) == DayKey.of(day)
+          ? _prefs.getInt(_kDailySeconds) ?? 0
+          : 0;
+
+  Future<void> saveDaily({
+    required DateTime day,
+    required String marks,
+    required int seconds,
+  }) async {
+    await _prefs.setInt(_kDailyDay, DayKey.of(day));
+    await _prefs.setString(_kDailyMarks, marks);
+    await _prefs.setInt(_kDailySeconds, seconds);
+  }
+
+  Future<void> clearSavedDaily() async {
+    await _prefs.remove(_kDailyDay);
+    await _prefs.remove(_kDailyMarks);
+    await _prefs.remove(_kDailySeconds);
   }
 
   /// Wipes campaign progress. Settings and lifetime stats are untouched.

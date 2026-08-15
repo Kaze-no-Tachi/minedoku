@@ -25,6 +25,29 @@ that step costs a mistake on any cell outside the solution: taking back your own
 mark could not be done without being punished for it. Now the only move that can
 ever be wrong is the one that takes a deliberate press.
 
+Leaving a board with work on it is confirmed rather than silent. A back gesture
+is a swipe from either screen edge on a phone, and the board is drawn close to
+both, so it was far too easy to throw a half-solved board away with a stray
+thumb. The daily gets its own save slot as well, because there is exactly one a
+day and starting it over is not a real option.
+
+## Learning it
+
+The rules are four sentences and still leave a first-time player looking at a
+grid of coloured squares with no idea what to touch. So the first launch opens
+an **interactive tutorial** rather than a page of text: a fixed 4x4 board that
+the player solves themselves, one deduction at a time. Nothing advances on a
+timer, and no step with a move to make has a Next button, because the move is
+the way forward.
+
+The board is a literal in `tutorial_screen.dart` rather than a generated puzzle,
+so the script and what is on screen cannot drift apart, and auto-marking is
+forced on there whatever the player's settings say: one step is about watching
+the X marks appear, and it cannot teach that if they do not.
+
+It can be skipped, never reappears once seen, and is replayable from Learn to
+play on the menu. `how_to_play_screen.dart` stays as the rules reference.
+
 ## Play it in a browser
 
 Every push deploys the web build to GitHub Pages:
@@ -222,9 +245,15 @@ deuteranopia and tritanopia and reports the closest pair in CIELAB. A test holds
 each theme to its own claim.
 
 Only High Contrast survives on colour alone, and its palette was found by search
-rather than chosen by eye. The other four get per-region **patterns** switched on
-automatically, which carry what colour cannot. Patterns can be forced on or off
-in Look and feel.
+rather than chosen by eye. For the other four there are per-region **patterns**,
+which carry what colour cannot.
+
+Patterns are **off by default**, which is a deliberate trade. A board of stripes
+and dots reads as busy before it reads as helpful, and the first impression is
+the one that decides whether a new player stays. The accessible paths are still
+one tap away in Look and feel: Automatic turns patterns on for exactly the
+themes that need them, Always on forces them everywhere, and High Contrast needs
+neither.
 
 ## Hard mode
 

@@ -239,7 +239,56 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        return Scaffold(
+        return PopScope(
+          // A back gesture is far too easy to fire by accident: on a phone it
+          // is a swipe from either screen edge, and the board is drawn close to
+          // both. Losing a part-solved board to a stray thumb is not acceptable,
+          // so leaving one is confirmed rather than silent.
+          canPop: !_shouldConfirmExit(controller),
+          onPopInvokedWithResult: (didPop, _) async {
+            if (didPop || !mounted) return;
+            // Captured before the await, so no BuildContext crosses it.
+            final navigator = Navigator.of(context);
+            if (await _confirmExit() && mounted) navigator.pop();
+          },
+          child: _buildScaffold(context, controller),
+        );
+      },
+    );
+  }
+
+  /// True when walking away now would throw away real work.
+  bool _shouldConfirmExit(GameController controller) =>
+      !controller.loading && !controller.isFinished && controller.hasProgress;
+
+  Future<bool> _confirmExit() async {
+    final resumable = widget.isCampaign || widget.isDaily;
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Leave this board?'),
+        content: Text(
+          resumable
+              ? 'It is saved, so you can pick it up where you left off.'
+              : 'This board is not saved, so you would be starting over.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep playing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+    return answer ?? false;
+  }
+
+  Widget _buildScaffold(BuildContext context, GameController controller) {
+    return Scaffold(
           appBar: AppBar(
             title: Text(widget.gauntlet == null
                 ? widget.spec.displayName
@@ -258,8 +307,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 : _buildGame(context, controller),
           ),
         );
-      },
-    );
   }
 
   Widget _buildGame(BuildContext context, GameController controller) {
