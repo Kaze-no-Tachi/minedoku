@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minedoku/screens/game_screen.dart';
+import 'package:minedoku/screens/gauntlet_screen.dart';
+import 'package:minedoku/screens/levels_screen.dart';
+import 'package:minedoku/widgets/star_row.dart';
 import 'package:minedoku/screens/title_screen.dart';
+import 'package:minedoku/audio/sound_service.dart';
 import 'package:minedoku/state/app_state.dart';
 import 'package:minedoku/widgets/board_view.dart';
 import 'package:minedoku/theme/app_theme.dart';
@@ -34,6 +38,9 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     appState = await AppState.load();
+    // No audio plugin under test, and the service would only swallow the
+    // failures anyway. Silence keeps the output clean.
+    SoundService.instance = SilentSoundService();
   });
 
   group('title screen', () {
@@ -343,6 +350,73 @@ void main() {
         reason: 'relaxed mode lets you be wrong',
       );
       expect(find.text('BOARD'), findsOneWidget);
+    });
+  });
+
+  group('stars', () {
+    testWidgets('a finished level shows its stars in the grid', (tester) async {
+      await appState.progress.recordWin(
+          level: 1, size: 5, seconds: 10, hintsUsed: 0);
+
+      await tester.pumpWidget(hostFor(const LevelsScreen(count: 8), appState));
+      await tester.pumpAndSettle();
+
+      final rows = tester.widgetList<StarRow>(find.byType(StarRow)).toList();
+      expect(rows, hasLength(1), reason: 'only the finished level is rated');
+      expect(rows.first.earned, 3,
+          reason: 'fast and hint-free earns all three');
+    });
+
+    test('stars are earned once and never taken away', () async {
+      await appState.progress.recordWin(
+          level: 1, size: 5, seconds: 10, hintsUsed: 0);
+      expect(appState.progress.stars(1), 3);
+
+      // A slower, hint-assisted replay must not demote the level.
+      await appState.progress.recordWin(
+          level: 1, size: 5, seconds: 900, hintsUsed: 4);
+      expect(appState.progress.stars(1), 3);
+    });
+
+    test('the star total adds up across levels', () async {
+      expect(appState.progress.totalStars, 0);
+      await appState.progress.recordWin(
+          level: 1, size: 5, seconds: 10, hintsUsed: 0); // 3
+      await appState.progress.recordWin(
+          level: 2, size: 5, seconds: 900, hintsUsed: 2); // 1
+      expect(appState.progress.totalStars, 4);
+    });
+
+    test('hints cost the second and third star', () async {
+      await appState.progress.recordWin(
+          level: 3, size: 5, seconds: 1, hintsUsed: 1);
+      expect(appState.progress.stars(3), 1);
+    });
+  });
+
+  group('gauntlet', () {
+    testWidgets('records the run and offers another', (tester) async {
+      await tester.pumpWidget(hostFor(const GauntletScreen(), appState));
+      await tester.pumpAndSettle();
+
+      // The board is titled by its position in the run, not by a level number.
+      expect(find.text('Board 1'), findsOneWidget);
+      expect(find.text('MISTAKES LEFT'), findsOneWidget);
+    });
+
+    test('a run remembers the best result', () async {
+      expect(appState.stats.bestGauntlet, 0);
+
+      expect(await appState.stats.recordGauntlet(4), isTrue);
+      expect(appState.stats.bestGauntlet, 4);
+
+      expect(await appState.stats.recordGauntlet(2), isFalse,
+          reason: 'a worse run is not a record');
+      expect(appState.stats.bestGauntlet, 4);
+
+      expect(await appState.stats.recordGauntlet(9), isTrue);
+      expect(appState.stats.bestGauntlet, 9);
+      expect(appState.stats.gauntletRuns, 3);
     });
   });
 

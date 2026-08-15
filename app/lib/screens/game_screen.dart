@@ -5,7 +5,9 @@ import '../state/app_state.dart';
 import '../state/game_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/board_view.dart';
+import '../audio/sound_service.dart';
 import '../widgets/detonation.dart';
+import '../widgets/star_row.dart';
 
 /// Plays one board.
 class GameScreen extends StatefulWidget {
@@ -17,6 +19,9 @@ class GameScreen extends StatefulWidget {
     this.endlessDifficulty,
     this.restoreMarks,
     this.restoreSeconds = 0,
+    this.gauntlet,
+    this.onGauntletCleared,
+    this.onGauntletLost,
   });
 
   final LevelSpec spec;
@@ -26,6 +31,15 @@ class GameScreen extends StatefulWidget {
   /// Set for endless boards, so winning can deal another at the same level of
   /// challenge without going back to the menu.
   final Difficulty? endlessDifficulty;
+
+  /// The run this board belongs to, when played as part of a gauntlet.
+  final GauntletRun? gauntlet;
+
+  /// Called with the board's time and the run's mistake total once cleared.
+  final void Function(int seconds, int mistakes)? onGauntletCleared;
+
+  /// Called once the board has finished exploding and the run is over.
+  final void Function(int mistakes)? onGauntletLost;
   final String? restoreMarks;
   final int restoreSeconds;
 
@@ -48,11 +62,16 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     super.didChangeDependencies();
     if (_controller != null) return;
 
+    final run = widget.gauntlet;
     final controller = GameController(
       spec: widget.spec,
       appState: AppScope.of(context),
       isCampaign: widget.isCampaign,
       isDaily: widget.isDaily,
+      // A gauntlet carries its mistakes between boards and is always hard,
+      // whatever the menu setting says.
+      initialMistakes: run?.mistakes ?? 0,
+      forceMode: run == null ? null : GameMode.hard,
     );
     controller.addListener(_onControllerChanged);
     _controller = controller;
@@ -68,7 +87,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _winShown = true;
       // Let the winning move paint before the sheet slides over it.
       Future<void>.delayed(const Duration(milliseconds: 420), () {
-        if (mounted) _showWinSheet();
+        if (!mounted) return;
+        final handOff = widget.onGauntletCleared;
+        if (handOff != null) {
+          handOff(_controller!.seconds, _controller!.mistakes);
+        } else {
+          _showWinSheet();
+        }
       });
     }
   }
@@ -103,8 +128,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       builder: (context) => _WinSheet(
         spec: widget.spec,
         time: controller.formattedTime,
+        seconds: controller.seconds,
         hintsUsed: controller.hintsUsed,
         bestSeconds: best,
+        stars: controller.starsEarned,
         showNext: widget.isCampaign,
         showAnother: widget.endlessDifficulty != null,
       ),
@@ -177,6 +204,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   Future<void> _showLossSheet() async {
     if (!mounted) return;
     final controller = _controller!;
+    // In a gauntlet the run owns the aftermath, not this screen.
+    final runLost = widget.onGauntletLost;
+    if (runLost != null) {
+      runLost(controller.mistakes);
+      return;
+    }
     final action = await showModalBottomSheet<String>(
       context: context,
       isDismissible: false,
@@ -205,7 +238,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       builder: (context, _) {
         return Scaffold(
           appBar: AppBar(
-            title: Text(widget.spec.displayName),
+            title: Text(widget.gauntlet == null
+                ? widget.spec.displayName
+                : 'Board ${widget.gauntlet!.boardNumber}'),
             actions: [
               IconButton(
                 tooltip: 'Restart this board',
@@ -489,18 +524,35 @@ class _WinSheet extends StatelessWidget {
   const _WinSheet({
     required this.spec,
     required this.time,
+    required this.seconds,
     required this.hintsUsed,
     required this.bestSeconds,
+    required this.stars,
     required this.showNext,
     this.showAnother = false,
   });
 
   final LevelSpec spec;
   final String time;
+  final int seconds;
   final int hintsUsed;
   final int? bestSeconds;
+  final int stars;
   final bool showNext;
   final bool showAnother;
+
+  /// What the next star would take, or null when all three are earned.
+  ///
+  /// Naming the target is the difference between a rating and a reason to
+  /// play the board again.
+  String? get nextStarGoal {
+    if (stars >= StarRow.max) return null;
+    if (hintsUsed > 0) return 'Finish without hints for the second star.';
+    final target = LevelResult.targetSeconds(spec.size);
+    final minutes = (target ~/ 60).toString().padLeft(2, '0');
+    final rest = (target % 60).toString().padLeft(2, '0');
+    return 'Beat $minutes:$rest for the third star.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -510,6 +562,19 @@ class _WinSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (stars > 0) ...[
+            AnimatedStars(
+              earned: stars,
+              onStarLanded: (star) => SoundService.instance.play(
+                switch (star) {
+                  1 => Sfx.star1,
+                  2 => Sfx.star2,
+                  _ => Sfx.star3,
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Text('Board cleared', style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               )),
@@ -535,6 +600,16 @@ class _WinSheet extends StatelessWidget {
               _Stat(label: 'Hints', value: '$hintsUsed'),
             ],
           ),
+          if (nextStarGoal != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              nextStarGoal!,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           if (showNext)
             FilledButton(

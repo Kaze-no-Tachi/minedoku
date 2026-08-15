@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:minedoku_engine/minedoku_engine.dart';
 
+import '../audio/sound_service.dart';
+
 import 'app_state.dart';
 
 /// Drives a single board: generation, taps, timer, hints and the win check.
@@ -16,7 +18,10 @@ class GameController extends ChangeNotifier {
     required this.appState,
     this.isCampaign = true,
     this.isDaily = false,
-  });
+    this.initialMistakes = 0,
+    this.forceMode,
+    SoundService? sound,
+  }) : _sound = sound ?? SoundService.instance;
 
   final LevelSpec spec;
   final AppState appState;
@@ -28,8 +33,18 @@ class GameController extends ChangeNotifier {
   /// Set for the daily puzzle, which feeds the streak.
   final bool isDaily;
 
+  /// Mistakes already made, for a gauntlet run where lives are shared across
+  /// boards rather than reset with each one.
+  final int initialMistakes;
+
+  /// Overrides the player's setting. Used by the gauntlet, which is always
+  /// hard whatever the menu says.
+  final GameMode? forceMode;
+
   static const _generator = PuzzleGenerator();
   static const _hintEngine = HintEngine();
+
+  final SoundService _sound;
 
   GameBoard? _board;
   Timer? _timer;
@@ -40,6 +55,8 @@ class GameController extends ChangeNotifier {
   int _seconds = 0;
   int _hintsUsed = 0;
   int _mistakes = 0;
+  int _combo = 0;
+  int _bestCombo = 0;
   int? _rejectedCell;
   late GameMode _mode;
 
@@ -66,6 +83,15 @@ class GameController extends ChangeNotifier {
   bool get isFinished => _won || _lost;
 
   int get mistakes => _mistakes;
+
+  /// Correct placements in a row since the last refused one.
+  ///
+  /// Hard mode only, and for a reason: a combo that breaks on a wrong mine
+  /// would quietly tell a relaxed-mode player they had gone wrong, which is the
+  /// game giving away its own answer. Hard mode already says so out loud.
+  int get combo => _mode.isHard ? _combo : 0;
+
+  int get bestCombo => _bestCombo;
 
   int get livesLeft => MistakeRules.livesLeft(_mistakes);
 
@@ -95,7 +121,9 @@ class GameController extends ChangeNotifier {
   /// Generation is fast (a few milliseconds, ~60ms for the largest boards), but
   /// it still happens off the first frame so the screen can paint immediately.
   Future<void> start({String? restoreMarks, int restoreSeconds = 0}) async {
-    _mode = appState.settings.gameMode;
+    _mode = forceMode ?? appState.settings.gameMode;
+    _mistakes = initialMistakes;
+    _sound.enabled = appState.settings.sound;
     _loading = true;
     notifyListeners();
 
@@ -152,8 +180,11 @@ class GameController extends ChangeNotifier {
     // mistake. Marking a cell clear is never punished, even when wrong.
     final becomingMine = board.markAt(index) == CellMark.blocked;
     if (becomingMine && _rejectPlacement(index)) return;
+    final before = board.markAt(index);
     board.cycle(index);
-    _afterMove(placed: board.markAt(index) == CellMark.mine);
+    final after = board.markAt(index);
+    _sounded(before, after);
+    _afterMove(placed: after == CellMark.mine);
   }
 
   /// Long press puts a mine down directly, skipping the X step.
@@ -164,11 +195,27 @@ class GameController extends ChangeNotifier {
     _clearRejection();
     final removing = board.markAt(index) == CellMark.mine;
     if (!removing && _rejectPlacement(index)) return;
+    final before = board.markAt(index);
     board.setMark(
       index,
       removing ? CellMark.empty : CellMark.mine,
     );
+    _sounded(before, board.markAt(index));
     _afterMove(placed: board.markAt(index) == CellMark.mine);
+  }
+
+  /// Plays the sound for a mark changing, and advances the combo.
+  void _sounded(CellMark before, CellMark after) {
+    if (after == CellMark.mine) {
+      // The ladder climbs with the number of mines on the board.
+      _sound.playPlacement(_board!.minesPlaced);
+      _combo++;
+      if (_combo > _bestCombo) _bestCombo = _combo;
+    } else if (before == CellMark.mine) {
+      _sound.play(Sfx.remove);
+    } else if (after == CellMark.blocked) {
+      _sound.play(Sfx.mark);
+    }
   }
 
   /// In hard mode, refuses a mine that cannot be part of the solution and
@@ -181,7 +228,9 @@ class GameController extends ChangeNotifier {
     if (!MistakeRules.isMistake(_board!.puzzle, index)) return false;
 
     _mistakes++;
+    _combo = 0;
     _rejectedCell = index;
+    _sound.play(Sfx.error);
     _buzz(HapticFeedback.heavyImpact);
     if (MistakeRules.isLost(_mistakes)) {
       _lose();
@@ -202,6 +251,7 @@ class GameController extends ChangeNotifier {
     _lost = true;
     _timer?.cancel();
     _timer = null;
+    _sound.play(Sfx.boom);
     _buzz(HapticFeedback.heavyImpact);
     notifyListeners();
     // A lost board is not resumable: it would restore into a dead game.
@@ -211,6 +261,7 @@ class GameController extends ChangeNotifier {
   /// Starts the same board again from empty, keeping its difficulty.
   void retry() {
     _mistakes = 0;
+    _combo = 0;
     _lost = false;
     _won = false;
     _rejectedCell = null;
@@ -277,6 +328,7 @@ class GameController extends ChangeNotifier {
     _won = true;
     _timer?.cancel();
     _timer = null;
+    _sound.play(Sfx.win);
     _buzz(HapticFeedback.heavyImpact);
     notifyListeners();
 

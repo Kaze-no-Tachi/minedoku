@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:minedoku_engine/minedoku_engine.dart';
 
+import '../audio/sound_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ambient_board.dart';
 import '../widgets/logo_lockup.dart';
 import 'game_screen.dart';
+import 'gauntlet_screen.dart';
 import 'how_to_play_screen.dart';
 import 'levels_screen.dart';
 import 'theme_screen.dart';
@@ -263,6 +265,18 @@ class _Menu extends StatelessWidget {
             streak > 0 ? 'Daily puzzle  ·  $streak day streak' : 'Daily puzzle',
           ),
         ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const GauntletScreen()),
+          ),
+          icon: const Icon(Icons.whatshot_rounded),
+          label: Text(
+            appState.stats.bestGauntlet > 0
+                ? 'Gauntlet  ·  best ${appState.stats.bestGauntlet}'
+                : 'Gauntlet',
+          ),
+        ),
         const SizedBox(height: 24),
         Text(
           'ENDLESS',
@@ -394,6 +408,19 @@ class _SettingsSheetState extends State<SettingsSheet> {
               ),
               onChanged: (value) async {
                 await appState.settings.setAutoBlock(value);
+                if (mounted) setState(() {});
+              },
+            ),
+            SwitchListTile(
+              value: appState.settings.sound,
+              title: const Text('Sound'),
+              subtitle: const Text(
+                'Each mine placed sounds a note higher than the last.',
+              ),
+              onChanged: (value) async {
+                await appState.settings.setSound(value);
+                SoundService.instance.enabled = value;
+                if (value) SoundService.instance.play(Sfx.star1);
                 if (mounted) setState(() {});
               },
             ),

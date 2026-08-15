@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'audio/sound_service.dart';
 import 'screens/title_screen.dart';
 import 'state/app_state.dart';
 import 'theme/app_theme.dart';
@@ -9,6 +10,10 @@ Future<void> main() async {
   // Progress and settings are read once, up front, so no screen has to deal
   // with a "not loaded yet" state.
   final appState = await AppState.load();
+  // Players are created up front so the first tap is not the one that pays for
+  // it. Failures here are swallowed by the service.
+  SoundService.instance.enabled = appState.settings.sound;
+  await SoundService.instance.warmUp();
   runApp(MinedokuApp(appState: appState));
 }
 

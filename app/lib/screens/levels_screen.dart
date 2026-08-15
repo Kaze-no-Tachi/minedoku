@@ -3,6 +3,7 @@ import 'package:minedoku_engine/minedoku_engine.dart';
 
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/star_row.dart';
 import 'game_screen.dart';
 
 /// Grid of campaign levels, showing what is finished and what is still locked.
@@ -17,8 +18,26 @@ class LevelsScreen extends StatelessWidget {
     final appState = AppScope.of(context);
     final unlocked = appState.progress.highestUnlockedLevel;
 
+    final earned = appState.progress.totalStars;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Levels')),
+      appBar: AppBar(
+        title: const Text('Levels'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.star_rounded,
+                    size: 18, color: Color(0xFFFFC93C)),
+                const SizedBox(width: 4),
+                Text('$earned',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -40,6 +59,7 @@ class LevelsScreen extends StatelessWidget {
                   locked: level > unlocked,
                   completed: appState.progress.isCompleted(level),
                   bestSeconds: appState.progress.bestTime(level),
+                  stars: appState.progress.stars(level),
                 );
               },
             ),
@@ -56,12 +76,14 @@ class _LevelTile extends StatelessWidget {
     required this.locked,
     required this.completed,
     required this.bestSeconds,
+    required this.stars,
   });
 
   final int level;
   final bool locked;
   final bool completed;
   final int? bestSeconds;
+  final int stars;
 
   @override
   Widget build(BuildContext context) {
@@ -116,12 +138,13 @@ class _LevelTile extends StatelessWidget {
                         : theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (bestSeconds != null)
-                  Text(
-                    '${(bestSeconds! ~/ 60).toString().padLeft(2, '0')}:'
-                    '${(bestSeconds! % 60).toString().padLeft(2, '0')}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: game.glyphColor.withValues(alpha: 0.7),
+                if (completed)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: StarRow(
+                      earned: stars,
+                      size: 13,
+                      emptyColor: game.glyphColor.withValues(alpha: 0.3),
                     ),
                   ),
               ],

@@ -35,6 +35,8 @@ class StatsStore extends ChangeNotifier {
   static const _kBest = 'stat_best_';
   static const _kTotalTime = 'stat_total_time_';
   static const _kHints = 'stat_hints';
+  static const _kGauntletBest = 'stat_gauntlet_best';
+  static const _kGauntletRuns = 'stat_gauntlet_runs';
   static const _kStreakCurrent = 'streak_current';
   static const _kStreakLongest = 'streak_longest';
   static const _kStreakLastDay = 'streak_last_day';
@@ -92,6 +94,21 @@ class StatsStore extends ChangeNotifier {
       await _prefs.setInt('$_kBest$size', seconds);
     }
     notifyListeners();
+  }
+
+  /// Most boards ever cleared in a single gauntlet run.
+  int get bestGauntlet => _prefs.getInt(_kGauntletBest) ?? 0;
+
+  int get gauntletRuns => _prefs.getInt(_kGauntletRuns) ?? 0;
+
+  /// Records a finished run. Returns true when it beat the previous best,
+  /// so the summary can say so.
+  Future<bool> recordGauntlet(int boardsCleared) async {
+    await _prefs.setInt(_kGauntletRuns, gauntletRuns + 1);
+    final beaten = boardsCleared > bestGauntlet;
+    if (beaten) await _prefs.setInt(_kGauntletBest, boardsCleared);
+    notifyListeners();
+    return beaten;
   }
 
   // ------------------------------------------------------------------ streak

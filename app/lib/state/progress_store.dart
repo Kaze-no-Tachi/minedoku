@@ -68,6 +68,15 @@ class ProgressStore extends ChangeNotifier {
 
   int? fewestHints(int level) => _prefs.getInt('$_kHintsPrefix$level');
 
+  /// Stars earned across every level. The number the star chase is about.
+  int get totalStars {
+    var sum = 0;
+    for (final key in _prefs.getKeys()) {
+      if (key.startsWith(_kStarsPrefix)) sum += _prefs.getInt(key) ?? 0;
+    }
+    return sum;
+  }
+
   /// Records a win: unlocks the next level and keeps every personal best.
   Future<void> recordWin({
     required int level,
