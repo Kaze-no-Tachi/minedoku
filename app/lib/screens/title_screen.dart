@@ -178,6 +178,26 @@ class _AmbientBackdrop extends StatelessWidget {
 class _Menu extends StatelessWidget {
   const _Menu();
 
+  /// A throwaway number to pick a board with. Endless boards are meant to be
+  /// different every time, so unlike the campaign they are not reproducible.
+  static int _roll() => DateTime.now().microsecondsSinceEpoch % 1000000;
+
+  static void _startEndless(
+    BuildContext context,
+    LevelSpec spec,
+    Difficulty difficulty,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => GameScreen(
+          spec: spec,
+          isCampaign: false,
+          endlessDifficulty: difficulty,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = AppScope.of(context);
@@ -245,7 +265,38 @@ class _Menu extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         Text(
-          'PRACTICE',
+          'ENDLESS',
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 1.6,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'A fresh board at the difficulty you pick, every time.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final difficulty in Difficulty.values)
+              ActionChip(
+                label: Text(difficulty.label),
+                onPressed: () => _startEndless(
+                  context,
+                  Levels.endless(difficulty, _roll()),
+                  difficulty,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'OR BY SIZE',
           style: theme.textTheme.labelSmall?.copyWith(
             letterSpacing: 1.6,
             color: theme.colorScheme.onSurfaceVariant,
@@ -260,16 +311,8 @@ class _Menu extends StatelessWidget {
               ActionChip(
                 label: Text('${size}x$size'),
                 onPressed: () {
-                  final seed =
-                      DateTime.now().millisecondsSinceEpoch % 1000000;
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => GameScreen(
-                        spec: Levels.custom(size: size, seed: seed),
-                        isCampaign: false,
-                      ),
-                    ),
-                  );
+                  final spec = Levels.endlessAtSize(size, _roll());
+                  _startEndless(context, spec, spec.difficulty);
                 },
               ),
           ],

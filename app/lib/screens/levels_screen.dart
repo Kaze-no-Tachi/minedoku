@@ -67,10 +67,10 @@ class _LevelTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final spec = Levels.forLevel(level);
-    // Tinted by board size, using the active theme's own palette so the grid
-    // changes character with the rest of the app.
+    // Tinted by measured difficulty rather than board size: difficulty is what
+    // the campaign actually ramps, and size no longer tracks it.
     final game = AppScope.of(context).gameTheme;
-    final tint = game.regionColor(spec.size - 5);
+    final tint = game.regionColor(spec.difficulty.index);
 
     return Opacity(
       opacity: locked ? 0.4 : 1,
@@ -109,7 +109,7 @@ class _LevelTile extends StatelessWidget {
                   ),
                 const SizedBox(height: 2),
                 Text(
-                  '${spec.size}x${spec.size}',
+                  '${spec.size}x${spec.size} ${spec.difficulty.label[0]}',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: completed
                         ? game.glyphColor.withValues(alpha: 0.7)

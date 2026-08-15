@@ -110,7 +110,53 @@ steps:
 Step 3 is what makes the larger boards practical. Every size from 4x4 to 9x9 now
 generates on the first attempt, in 60 ms or less on a laptop.
 
-Boards are never stored. A level number maps to a `(size, seed)` pair, and the
+## How difficulty is decided
+
+Board size used to be the only thing that increased, and measuring showed that
+was a poor proxy. Rating the old size-ordered levels by solving them found that
+roughly **a third needed no deduction at all**, that difficulty went up and down
+at random (level 11 was easier than level 7), and that an 8x8 could be easier
+than a 5x5.
+
+`DifficultyRater` now solves a board and scores each step by the kind of
+reasoning it needs: a forced placement costs 1, an elimination with a nameable
+reason costs 3, a contradiction chased deeper costs 8 or more. Dividing by the
+number of mines gives a figure comparable across sizes, where 1.0 means "solvable
+by forced moves alone, nothing to work out".
+
+`tool/build_level_table.dart` searches for boards at each size and difficulty and
+writes `lib/src/level_table.g.dart`, which is committed. 1000 graded boards, 40
+per bucket. Doing this at build time keeps the app instant and every board
+reproducible, at the cost of a generated file.
+
+The campaign now climbs in both directions, size and measured difficulty:
+
+| Levels | Board | Difficulty |
+|---|---|---|
+| 1-5 | 5x5 | Gentle |
+| 6-12 | 5x5 | Easy |
+| 13-20 | 6x6 | Easy |
+| 21-32 | 6x6 | Medium |
+| 33-48 | 7x7 | Medium |
+| 49-66 | 7x7 | Hard |
+| 67-86 | 8x8 | Hard |
+| 87-110 | 8x8 | Expert |
+| 111+ | 9x9 | Expert |
+
+Gentle is the one tier allowed to contain boards solvable by forced moves. That
+is deliberate: measuring showed that at small sizes boards are either trivial or
+need real deduction with very little in between, so those boards are the
+campaign's on-ramp rather than something to throw away.
+
+## Modes
+
+- **Campaign**: fixed graded boards. Level 5 is the same board for everyone,
+  always, so stars and best times can be compared.
+- **Endless**: pick a difficulty and get a fresh board every time, drawn from the
+  same graded table. Never trivial.
+- **Daily**: one graded board a day, the same for everyone.
+
+Boards are never stored. A level maps to a `(size, seed)` pair, and the
 generator rebuilds the identical board from it, so the whole campaign costs no
 storage and levels can be shared by number. The engine ships its own small
 random number generator rather than using `dart:math`, because the sequence in

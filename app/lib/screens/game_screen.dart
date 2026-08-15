@@ -14,6 +14,7 @@ class GameScreen extends StatefulWidget {
     required this.spec,
     this.isCampaign = true,
     this.isDaily = false,
+    this.endlessDifficulty,
     this.restoreMarks,
     this.restoreSeconds = 0,
   });
@@ -21,6 +22,10 @@ class GameScreen extends StatefulWidget {
   final LevelSpec spec;
   final bool isCampaign;
   final bool isDaily;
+
+  /// Set for endless boards, so winning can deal another at the same level of
+  /// challenge without going back to the menu.
+  final Difficulty? endlessDifficulty;
   final String? restoreMarks;
   final int restoreSeconds;
 
@@ -101,6 +106,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         hintsUsed: controller.hintsUsed,
         bestSeconds: best,
         showNext: widget.isCampaign,
+        showAnother: widget.endlessDifficulty != null,
       ),
     );
     if (!mounted) return;
@@ -111,6 +117,18 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           MaterialPageRoute<void>(
             builder: (_) => GameScreen(
               spec: Levels.forLevel(widget.spec.number + 1),
+            ),
+          ),
+        );
+      case 'another':
+        final difficulty = widget.endlessDifficulty!;
+        final roll = DateTime.now().microsecondsSinceEpoch % 1000000;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => GameScreen(
+              spec: Levels.endless(difficulty, roll),
+              isCampaign: false,
+              endlessDifficulty: difficulty,
             ),
           ),
         );
@@ -474,6 +492,7 @@ class _WinSheet extends StatelessWidget {
     required this.hintsUsed,
     required this.bestSeconds,
     required this.showNext,
+    this.showAnother = false,
   });
 
   final LevelSpec spec;
@@ -481,6 +500,7 @@ class _WinSheet extends StatelessWidget {
   final int hintsUsed;
   final int? bestSeconds;
   final bool showNext;
+  final bool showAnother;
 
   @override
   Widget build(BuildContext context) {
@@ -495,8 +515,7 @@ class _WinSheet extends StatelessWidget {
               )),
           const SizedBox(height: 6),
           Text(
-            '${spec.displayName}, ${spec.size}x${spec.size}, '
-            '${spec.difficulty.label}',
+            '${spec.size}x${spec.size}, ${spec.difficulty.label}',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -522,7 +541,12 @@ class _WinSheet extends StatelessWidget {
               onPressed: () => Navigator.of(context).pop('next'),
               child: const Text('Next level'),
             ),
-          if (showNext) const SizedBox(height: 10),
+          if (showAnother)
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop('another'),
+              child: Text('Another ${spec.difficulty.label.toLowerCase()} board'),
+            ),
+          if (showNext || showAnother) const SizedBox(height: 10),
           OutlinedButton(
             onPressed: () => Navigator.of(context).pop('replay'),
             child: const Text('Play again'),
