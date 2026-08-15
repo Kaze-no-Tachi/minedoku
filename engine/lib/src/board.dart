@@ -33,8 +33,13 @@ class GameBoard {
   bool autoBlock;
 
   final List<CellMark> _marks;
-  final List<List<CellMark>> _undo = [];
-  final List<List<CellMark>> _redo = [];
+
+  /// Cells X'd out by [autoBlock] rather than by the player. Tracking who put
+  /// a mark there is what lets an automatic one be withdrawn later.
+  final Set<int> _autoBlocked = {};
+
+  final List<_Snapshot> _undo = [];
+  final List<_Snapshot> _redo = [];
 
   int get size => puzzle.size;
 
@@ -103,39 +108,54 @@ class GameBoard {
     if (_marks[index] == mark) return;
     _pushUndo();
     _marks[index] = mark;
-    if (mark == CellMark.mine && autoBlock) {
-      _applyAutoBlock(index);
-    }
+    // The player has taken explicit control of this cell, so it is no longer
+    // something auto-marking may take back.
+    _autoBlocked.remove(index);
+    _refreshAutoBlocks();
     _redo.clear();
   }
 
-  /// X's out every cell that the mine at [index] rules out and that the player
-  /// has not already decided on.
-  void _applyAutoBlock(int index) {
-    final row = index ~/ size;
-    final col = index % size;
-    final region = puzzle.regions[index];
-    for (var i = 0; i < _marks.length; i++) {
-      if (i == index || _marks[i] != CellMark.empty) continue;
-      final sameRow = i ~/ size == row;
-      final sameColumn = i % size == col;
-      final sameRegion = puzzle.regions[i] == region;
-      final touches = MinedokuRules.touching(size, i, index);
-      if (sameRow || sameColumn || sameRegion || touches) {
-        _marks[i] = CellMark.blocked;
+  /// Rebuilds every auto-placed X from the mines currently on the board.
+  ///
+  /// Auto-marks are derived, never accumulated: they are all withdrawn and then
+  /// worked out again from scratch. That is what makes removing a mine tidy up
+  /// after itself instead of leaving its X's stranded on the board. Marks the
+  /// player made by hand are untouched, and switching [autoBlock] off withdraws
+  /// the automatic ones without disturbing them either.
+  void _refreshAutoBlocks() {
+    for (final cell in _autoBlocked) {
+      if (_marks[cell] == CellMark.blocked) _marks[cell] = CellMark.empty;
+    }
+    _autoBlocked.clear();
+    if (!autoBlock) return;
+
+    for (final mine in mineCells) {
+      final row = mine ~/ size;
+      final col = mine % size;
+      final region = puzzle.regions[mine];
+      for (var i = 0; i < _marks.length; i++) {
+        if (i == mine || _marks[i] != CellMark.empty) continue;
+        final sameRow = i ~/ size == row;
+        final sameColumn = i % size == col;
+        final sameRegion = puzzle.regions[i] == region;
+        final touches = MinedokuRules.touching(size, i, mine);
+        if (sameRow || sameColumn || sameRegion || touches) {
+          _marks[i] = CellMark.blocked;
+          _autoBlocked.add(i);
+        }
       }
     }
   }
 
   void undo() {
     if (_undo.isEmpty) return;
-    _redo.add(List<CellMark>.from(_marks));
+    _redo.add(_snapshot());
     _restore(_undo.removeLast());
   }
 
   void redo() {
     if (_redo.isEmpty) return;
-    _undo.add(List<CellMark>.from(_marks));
+    _undo.add(_snapshot());
     _restore(_redo.removeLast());
   }
 
@@ -146,19 +166,28 @@ class GameBoard {
     for (var i = 0; i < _marks.length; i++) {
       _marks[i] = CellMark.empty;
     }
+    _autoBlocked.clear();
     _redo.clear();
   }
 
+  _Snapshot _snapshot() => _Snapshot(
+        List<CellMark>.from(_marks),
+        Set<int>.from(_autoBlocked),
+      );
+
   void _pushUndo() {
-    _undo.add(List<CellMark>.from(_marks));
+    _undo.add(_snapshot());
     // Small boards, but there is no reason to grow without bound.
     if (_undo.length > 500) _undo.removeAt(0);
   }
 
-  void _restore(List<CellMark> snapshot) {
+  void _restore(_Snapshot snapshot) {
     for (var i = 0; i < _marks.length; i++) {
-      _marks[i] = snapshot[i];
+      _marks[i] = snapshot.marks[i];
     }
+    _autoBlocked
+      ..clear()
+      ..addAll(snapshot.autoBlocked);
   }
 
   /// Compact string of the player's marks, for saving a game in progress.
@@ -176,6 +205,7 @@ class GameBoard {
     if (encoded.length != _marks.length) return;
     _undo.clear();
     _redo.clear();
+    _autoBlocked.clear();
     for (var i = 0; i < encoded.length; i++) {
       _marks[i] = switch (encoded[i]) {
         'x' => CellMark.blocked,
@@ -183,5 +213,33 @@ class GameBoard {
         _ => CellMark.empty,
       };
     }
+    // A save records marks but not who placed them. Any X that a mine on the
+    // board already explains is treated as automatic, which is exactly what it
+    // would be after a fresh placement, so removing that mine still clears it.
+    if (autoBlock) {
+      for (final mine in mineCells) {
+        for (var i = 0; i < _marks.length; i++) {
+          if (i == mine || _marks[i] != CellMark.blocked) continue;
+          final sameRow = i ~/ size == mine ~/ size;
+          final sameColumn = i % size == mine % size;
+          final sameRegion = puzzle.regions[i] == puzzle.regions[mine];
+          if (sameRow ||
+              sameColumn ||
+              sameRegion ||
+              MinedokuRules.touching(size, i, mine)) {
+            _autoBlocked.add(i);
+          }
+        }
+      }
+    }
   }
+}
+
+/// One point in the undo timeline: the marks plus which of them were placed
+/// automatically.
+class _Snapshot {
+  const _Snapshot(this.marks, this.autoBlocked);
+
+  final List<CellMark> marks;
+  final Set<int> autoBlocked;
 }

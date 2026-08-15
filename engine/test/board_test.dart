@@ -70,6 +70,80 @@ void main() {
       board.setMark(1, CellMark.mine);
       expect(board.markAt(0), CellMark.empty);
     });
+
+    test('removing a mine takes its X marks back with it', () {
+      final board = GameBoard(fixture(), autoBlock: true);
+      board.setMark(1, CellMark.mine);
+      expect(board.markAt(0), CellMark.blocked);
+      expect(board.markAt(9), CellMark.blocked);
+
+      board.setMark(1, CellMark.empty);
+
+      expect(board.markAt(1), CellMark.empty);
+      expect(board.markAt(0), CellMark.empty, reason: 'row X must clear');
+      expect(board.markAt(9), CellMark.empty, reason: 'column X must clear');
+      expect(board.marks, everyElement(CellMark.empty));
+    });
+
+    test('cycling a mine back to empty clears its X marks', () {
+      final board = GameBoard(fixture(), autoBlock: true);
+      board.cycle(1); // blocked
+      board.cycle(1); // mine
+      expect(board.markAt(0), CellMark.blocked);
+
+      board.cycle(1); // empty again
+      expect(board.marks, everyElement(CellMark.empty));
+    });
+
+    test('removing one mine keeps the X marks of the other', () {
+      final board = GameBoard(fixture(), autoBlock: true);
+      board.setMark(1, CellMark.mine); // (0,1)
+      board.setMark(7, CellMark.mine); // (1,3)
+      expect(board.markAt(15), CellMark.blocked,
+          reason: '(3,3) is in column 3 with the second mine');
+
+      board.setMark(1, CellMark.empty);
+
+      expect(board.markAt(15), CellMark.blocked,
+          reason: 'the surviving mine still rules this out');
+      // (3,1) shares only column 1 with the removed mine, and nothing with the
+      // one still on the board, so it is the cell that must come back.
+      expect(board.markAt(13), CellMark.empty,
+          reason: 'only the removed mine ruled this out');
+    });
+
+    test('marks the player made by hand survive a mine being removed', () {
+      final board = GameBoard(fixture(), autoBlock: true);
+      board.setMark(10, CellMark.blocked); // player's own call
+      board.setMark(1, CellMark.mine);
+      board.setMark(1, CellMark.empty);
+
+      expect(board.markAt(10), CellMark.blocked);
+    });
+
+    test('a hand-placed X is not reclaimed by auto-marking', () {
+      final board = GameBoard(fixture(), autoBlock: true);
+      // The player X's a cell first; a later mine also rules it out, but the
+      // player owns that cell, so removing the mine must leave it alone.
+      board.setMark(0, CellMark.blocked);
+      board.setMark(1, CellMark.mine);
+      board.setMark(1, CellMark.empty);
+
+      expect(board.markAt(0), CellMark.blocked);
+    });
+
+    test('a restored save still tidies up after a removed mine', () {
+      final board = GameBoard(fixture(), autoBlock: true);
+      board.setMark(1, CellMark.mine);
+      final saved = board.encodeMarks();
+
+      final resumed = GameBoard(fixture(), autoBlock: true)
+        ..restoreMarks(saved);
+      expect(resumed.markAt(0), CellMark.blocked);
+
+      resumed.setMark(1, CellMark.empty);
+      expect(resumed.marks, everyElement(CellMark.empty));
+    });
   });
 
   group('rule violations', () {

@@ -176,12 +176,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         board: controller.board!,
                         conflictCells: controller.conflictCells,
                         hintCell: controller.hint?.cell,
+                        relatedCells: controller.hint?.relatedCells ?? const [],
                         onTapCell: controller.tapCell,
                         onLongPressCell: controller.placeMine,
                       ),
                       const SizedBox(height: 14),
-                      SizedBox(
-                        height: 44,
+                      // Minimum, not fixed: explanations run to a few lines and
+                      // must not be clipped.
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 52),
                         child: Center(
                           child: Text(
                             controller.hint?.message ??

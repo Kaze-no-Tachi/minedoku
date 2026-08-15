@@ -40,6 +40,7 @@ String _hint(int size, String regionsCsv, String solutionCsv, String marks) {
   return jsonEncode({
     'kind': hint.kind.name,
     'cell': hint.cell,
+    'relatedCells': hint.relatedCells,
     'message': hint.message,
   });
 }

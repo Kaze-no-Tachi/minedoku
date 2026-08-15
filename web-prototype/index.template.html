@@ -166,6 +166,9 @@
     display: grid;
     aspect-ratio: 1;
     width: 100%;
+    /* Dimmed cells fade toward this, so it must be the panel colour rather
+       than the dark frame, or spotlighting turns the board muddy. */
+    background: var(--panel);
   }
 
   .cell {
@@ -238,6 +241,10 @@
     border-radius: 4px;
     z-index: 3;
   }
+
+  /* While a hint is showing, everything outside the row, column or colour it
+     is talking about is dimmed, so the explanation has something to point at. */
+  .cell.dimmed { opacity: 0.3; }
 
   /* ------------------------------------------------------------ controls */
   .controls {
@@ -448,6 +455,8 @@
     running: false,
     won: false,
     hintCell: null,
+    related: [],
+    autoBlocked: {},
     lastPlaced: null
   };
 
@@ -504,19 +513,37 @@
 
   // -------------------------------------------------------------- gameplay
   function pushHistory() {
-    state.history.push(state.marks.slice());
+    state.history.push({
+      marks: state.marks.slice(),
+      autoBlocked: Object.assign({}, state.autoBlocked)
+    });
     if (state.history.length > 300) state.history.shift();
   }
 
-  function autoBlock(index) {
+  // Auto-placed X marks are derived, never accumulated: they are all withdrawn
+  // and worked out again from the mines currently on the board. That is what
+  // makes removing a mine clear the marks it caused, while leaving alone any
+  // the player made by hand.
+  function refreshAutoBlocks() {
+    for (var key in state.autoBlocked) {
+      var cell = Number(key);
+      if (state.marks[cell] === BLOCKED) state.marks[cell] = EMPTY;
+    }
+    state.autoBlocked = {};
+
     var size = state.size;
-    var row = Math.floor(index / size), col = index % size;
-    var region = state.regions[index];
-    for (var i = 0; i < state.marks.length; i++) {
-      if (i === index || state.marks[i] !== EMPTY) continue;
-      if (Math.floor(i / size) === row || (i % size) === col ||
-          state.regions[i] === region || touching(size, i, index)) {
-        state.marks[i] = BLOCKED;
+    var mines = mineCells();
+    for (var m = 0; m < mines.length; m++) {
+      var mine = mines[m];
+      var row = Math.floor(mine / size), col = mine % size;
+      var region = state.regions[mine];
+      for (var i = 0; i < state.marks.length; i++) {
+        if (i === mine || state.marks[i] !== EMPTY) continue;
+        if (Math.floor(i / size) === row || (i % size) === col ||
+            state.regions[i] === region || touching(size, i, mine)) {
+          state.marks[i] = BLOCKED;
+          state.autoBlocked[i] = true;
+        }
       }
     }
   }
@@ -525,12 +552,17 @@
     if (state.won || state.marks[index] === mark) return;
     pushHistory();
     state.marks[index] = mark;
-    if (mark === MINE) {
-      autoBlock(index);
-      state.lastPlaced = index;
-    }
-    state.hintCell = null;
+    // The player has taken explicit control of this cell.
+    delete state.autoBlocked[index];
+    refreshAutoBlocks();
+    if (mark === MINE) state.lastPlaced = index;
+    clearHint();
     afterMove();
+  }
+
+  function clearHint() {
+    state.hintCell = null;
+    state.related = [];
   }
 
   function cycle(index) {
@@ -555,8 +587,10 @@
 
   function undo() {
     if (state.won || !state.history.length) return;
-    state.marks = state.history.pop();
-    state.hintCell = null;
+    var previous = state.history.pop();
+    state.marks = previous.marks;
+    state.autoBlocked = previous.autoBlocked;
+    clearHint();
     state.lastPlaced = null;
     say("");
     render();
@@ -566,7 +600,8 @@
     if (state.won) return;
     pushHistory();
     state.marks = state.marks.map(function () { return EMPTY; });
-    state.hintCell = null;
+    state.autoBlocked = {};
+    clearHint();
     say("");
     render();
   }
@@ -582,8 +617,10 @@
       );
       var hint = JSON.parse(raw);
       state.hintCell = typeof hint.cell === "number" ? hint.cell : null;
+      state.related = Array.isArray(hint.relatedCells) ? hint.relatedCells : [];
       say(hint.message);
     } catch (err) {
+      clearHint();
       say("Hint unavailable.", "warn");
     }
     render();
@@ -728,6 +765,11 @@
     var conflicts = conflictSet();
     var cells = els.board.children;
 
+    // A hint that names a row, column or colour spotlights it.
+    var related = {};
+    for (var r = 0; r < state.related.length; r++) related[state.related[r]] = true;
+    var spotlight = state.related.length > 0;
+
     for (var i = 0; i < cells.length; i++) {
       var cell = cells[i];
       var mark = state.marks[i];
@@ -736,6 +778,10 @@
       cell.classList.toggle("blocked", mark === BLOCKED);
       cell.classList.toggle("conflict", Boolean(conflicts[i]));
       cell.classList.toggle("hinted", state.hintCell === i);
+      cell.classList.toggle(
+        "dimmed",
+        spotlight && !related[i] && i !== state.hintCell
+      );
 
       var glyph = cell.querySelector(".glyph");
       if (glyph) cell.removeChild(glyph);
@@ -771,8 +817,9 @@
     state.running = false;
     state.won = false;
     state.history = [];
-    state.hintCell = null;
+    state.autoBlocked = {};
     state.lastPlaced = null;
+    clearHint();
 
     var data;
     try {

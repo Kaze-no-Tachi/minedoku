@@ -17,6 +17,7 @@ class BoardView extends StatelessWidget {
     required this.onLongPressCell,
     this.conflictCells = const {},
     this.hintCell,
+    this.relatedCells = const [],
     this.revealSolution = false,
   });
 
@@ -26,6 +27,10 @@ class BoardView extends StatelessWidget {
   final Set<int> conflictCells;
   final int? hintCell;
 
+  /// The row, column or colour a hint is talking about. When this is set, every
+  /// other cell is dimmed so the explanation has something to point at.
+  final List<int> relatedCells;
+
   /// Dims everything except the answer. Used by the "show solution" action.
   final bool revealSolution;
 
@@ -33,6 +38,7 @@ class BoardView extends StatelessWidget {
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     final size = board.size;
+    final spotlight = relatedCells.toSet();
 
     // A Container (not a DecoratedBox) so the 3px frame insets its child, and
     // the LayoutBuilder sits inside the frame so cells are measured against the
@@ -78,8 +84,11 @@ class BoardView extends StatelessWidget {
                           mark: board.markAt(i),
                           inConflict: conflictCells.contains(i),
                           isHint: hintCell == i,
-                          dimmed: revealSolution &&
-                              !board.puzzle.solutionCells.contains(i),
+                          dimmed: (revealSolution &&
+                                  !board.puzzle.solutionCells.contains(i)) ||
+                              (spotlight.isNotEmpty &&
+                                  !spotlight.contains(i) &&
+                                  hintCell != i),
                           onTap: () => onTapCell(i),
                           onLongPress: () => onLongPressCell(i),
                           semanticLabel: 'Row ${i ~/ size + 1}, '

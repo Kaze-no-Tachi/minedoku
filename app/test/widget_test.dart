@@ -79,6 +79,51 @@ void main() {
       expect(find.text('4'), findsWidgets);
     });
 
+    testWidgets('removing a mine clears the marks it caused', (tester) async {
+      final spec = Levels.forLevel(1); // 5x5
+      await tester.pumpWidget(hostFor(GameScreen(spec: spec), appState));
+      await tester.pumpAndSettle();
+
+      final cell = find.byType(GestureDetector).first;
+      await tester.tap(cell); // X
+      await tester.pumpAndSettle();
+      await tester.tap(cell); // mine, which auto-marks the cells it rules out
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.close_rounded), findsWidgets,
+          reason: 'placing a mine should X out the cells it rules out');
+
+      await tester.tap(cell); // back to empty
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.close_rounded), findsNothing,
+          reason: 'removing the mine must take its X marks with it');
+      expect(find.text('5'), findsWidgets, reason: 'all 5 mines are free again');
+    });
+
+    testWidgets('a hint dims everything outside what it explains',
+        (tester) async {
+      final spec = Levels.forLevel(1);
+      await tester.pumpWidget(hostFor(GameScreen(spec: spec), appState));
+      await tester.pumpAndSettle();
+
+      int dimmed() => tester
+          .widgetList<AnimatedOpacity>(find.byType(AnimatedOpacity))
+          .where((w) => w.opacity < 1)
+          .length;
+
+      expect(dimmed(), 0, reason: 'nothing is dimmed before a hint');
+
+      await tester.ensureVisible(find.text('Hint'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Hint'));
+      await tester.pumpAndSettle();
+
+      expect(dimmed(), greaterThan(0),
+          reason: 'the hint should spotlight the row, column or colour');
+      expect(dimmed(), lessThan(25), reason: 'it must not dim the whole board');
+    });
+
     testWidgets('the hint button explains a move', (tester) async {
       final spec = Levels.forLevel(1);
       await tester.pumpWidget(hostFor(GameScreen(spec: spec), appState));
